@@ -87,9 +87,8 @@
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recyclerViewMonedas"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:nestedScrollingEnabled="false"/>
+            android:layout_height="150dp"
+            android:layout_marginTop="8dp"/>
 
         <TextView
             android:layout_width="wrap_content"
@@ -127,9 +126,47 @@
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recyclerViewTiposGasto"
             android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:layout_marginTop="8dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:nestedScrollingEnabled="false"/>
+            android:layout_marginTop="16dp"
+            android:text="Formas de Pago Permitidas"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Nueva forma de pago">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/editTextNuevaFormaPago"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <Button
+                android:id="@+id/buttonAnadirFormaPago"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Añadir" />
+        </LinearLayout>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerViewFormasPago"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:layout_marginTop="8dp"/>
 
         <Button
             android:id="@+id/buttonGuardarConfig"

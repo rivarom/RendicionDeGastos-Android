@@ -1,10 +1,8 @@
 package com.invap.rendiciondegastos
 
 import android.Manifest
-import android.app.Activity
 import android.app.DatePickerDialog
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -64,7 +62,6 @@ class NuevoGastoActivity : AppCompatActivity() {
         cargarOpcionesDesplegables()
         configurarCampoDeFecha()
 
-        // Si es un gasto nuevo, intentamos setear la moneda por defecto del viaje
         if (idGastoAEditar == null) {
             val monedaDefecto = intent.getStringExtra(EXTRA_VIAJE_MONEDA_DEFECTO)
             if (!monedaDefecto.isNullOrEmpty()) {
@@ -118,6 +115,7 @@ class NuevoGastoActivity : AppCompatActivity() {
         binding.editTextFechaGasto.setText(intent.getStringExtra(EXTRA_GASTO_FECHA))
         binding.autoCompleteTipoGasto.setText(intent.getStringExtra(EXTRA_GASTO_TIPO), false)
         binding.autoCompleteMoneda.setText(intent.getStringExtra(EXTRA_GASTO_MONEDA), false)
+        binding.autoCompleteFormaPago.setText(intent.getStringExtra(EXTRA_GASTO_FORMA_PAGO), false)
         urlFotoExistente = intent.getStringExtra(EXTRA_GASTO_URL_FOTO)
         if (!urlFotoExistente.isNullOrEmpty()) {
             binding.imageViewFotoRecibo.visibility = View.VISIBLE
@@ -130,9 +128,15 @@ class NuevoGastoActivity : AppCompatActivity() {
         val monedas = sharedPref.getStringSet("MONEDAS", emptySet())?.toList() ?: emptyList()
         val monedasAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, monedas)
         binding.autoCompleteMoneda.setAdapter(monedasAdapter)
+
         val tiposGasto = sharedPref.getStringSet("TIPOS_GASTO", emptySet())?.toList() ?: emptyList()
         val tiposGastoAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, tiposGasto)
         binding.autoCompleteTipoGasto.setAdapter(tiposGastoAdapter)
+
+        // Cargar y configurar Formas de Pago
+        val formasPago = sharedPref.getStringSet("FORMAS_PAGO", emptySet())?.toList() ?: emptyList()
+        val formasPagoAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, formasPago)
+        binding.autoCompleteFormaPago.setAdapter(formasPagoAdapter)
     }
 
     private fun abrirCamara() {
@@ -154,21 +158,22 @@ class NuevoGastoActivity : AppCompatActivity() {
         val fecha = binding.editTextFechaGasto.text.toString().trim()
         val tipoGasto = binding.autoCompleteTipoGasto.text.toString()
         val moneda = binding.autoCompleteMoneda.text.toString()
+        val formaDePago = binding.autoCompleteFormaPago.text.toString()
 
-        if (montoStr.isEmpty() || fecha.isEmpty() || viajeId == null || tipoGasto.isEmpty() || moneda.isEmpty()) {
+        if (montoStr.isEmpty() || fecha.isEmpty() || viajeId == null || tipoGasto.isEmpty() || moneda.isEmpty() || formaDePago.isEmpty()) {
             Toast.makeText(this, "Por favor, completa todos los campos", Toast.LENGTH_SHORT).show()
             binding.buttonGuardarGasto.isEnabled = true
             return
         }
 
         if (fotoUri != null) {
-            subirFotoYGuardarDatos(fotoUri!!, descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda)
+            subirFotoYGuardarDatos(fotoUri!!, descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda, formaDePago)
         } else {
-            guardarDatosEnFirestore(descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda, urlFotoExistente ?: "")
+            guardarDatosEnFirestore(descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda, formaDePago, urlFotoExistente ?: "")
         }
     }
 
-    private fun subirFotoYGuardarDatos(uri: Uri, descripcion: String, monto: Double, fecha: String, viajeId: String, tipoGasto: String, moneda: String) {
+    private fun subirFotoYGuardarDatos(uri: Uri, descripcion: String, monto: Double, fecha: String, viajeId: String, tipoGasto: String, moneda: String, formaDePago: String) {
         val fotoRef = storage.reference.child("recibos/${UUID.randomUUID()}.jpg")
         Toast.makeText(this, "Subiendo foto...", Toast.LENGTH_SHORT).show()
         fotoRef.putFile(uri)
@@ -177,7 +182,7 @@ class NuevoGastoActivity : AppCompatActivity() {
                 fotoRef.downloadUrl
             }
             .addOnSuccessListener { downloadUrl ->
-                guardarDatosEnFirestore(descripcion, monto, fecha, viajeId, tipoGasto, moneda, downloadUrl.toString())
+                guardarDatosEnFirestore(descripcion, monto, fecha, viajeId, tipoGasto, moneda, formaDePago, downloadUrl.toString())
             }
             .addOnFailureListener {
                 Toast.makeText(this, "Error al subir la foto", Toast.LENGTH_SHORT).show()
@@ -185,7 +190,7 @@ class NuevoGastoActivity : AppCompatActivity() {
             }
     }
 
-    private fun guardarDatosEnFirestore(descripcion: String, monto: Double, fecha: String, viajeId: String, tipoGasto: String, moneda: String, urlFoto: String) {
+    private fun guardarDatosEnFirestore(descripcion: String, monto: Double, fecha: String, viajeId: String, tipoGasto: String, moneda: String, formaDePago: String, urlFoto: String) {
         val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
@@ -199,6 +204,7 @@ class NuevoGastoActivity : AppCompatActivity() {
             "urlFotoRecibo" to urlFoto,
             "moneda" to moneda,
             "tipoGasto" to tipoGasto,
+            "formaDePago" to formaDePago,
             "nombrePersona" to nombrePersona,
             "legajo" to legajo,
             "centroCostos" to centroCostos
@@ -229,6 +235,7 @@ class NuevoGastoActivity : AppCompatActivity() {
         const val EXTRA_GASTO_FECHA = "EXTRA_GASTO_FECHA"
         const val EXTRA_GASTO_TIPO = "EXTRA_GASTO_TIPO"
         const val EXTRA_GASTO_MONEDA = "EXTRA_GASTO_MONEDA"
+        const val EXTRA_GASTO_FORMA_PAGO = "EXTRA_GASTO_FORMA_PAGO"
         const val EXTRA_GASTO_URL_FOTO = "EXTRA_GASTO_URL_FOTO"
     }
 }

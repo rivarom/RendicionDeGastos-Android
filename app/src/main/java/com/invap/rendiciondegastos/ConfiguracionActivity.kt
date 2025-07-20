@@ -11,13 +11,15 @@ class ConfiguracionActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityConfiguracionBinding
 
-    // Variables para la lista de Monedas
     private val monedasList = mutableListOf<String>()
     private lateinit var monedasAdapter: ConfiguracionAdapter
 
-    // Variables para la lista de Tipos de Gasto
     private val tiposGastoList = mutableListOf<String>()
     private lateinit var tiposGastoAdapter: ConfiguracionAdapter
+
+    // 1. Añadimos variables para la nueva lista
+    private val formasPagoList = mutableListOf<String>()
+    private lateinit var formasPagoAdapter: ConfiguracionAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,10 +53,20 @@ class ConfiguracionActivity : AppCompatActivity() {
         }
         binding.recyclerViewTiposGasto.adapter = tiposGastoAdapter
         binding.recyclerViewTiposGasto.layoutManager = LinearLayoutManager(this)
+
+        // 2. Configuramos el nuevo RecyclerView
+        formasPagoAdapter = ConfiguracionAdapter(formasPagoList) { formaPagoAEliminar ->
+            val position = formasPagoList.indexOf(formaPagoAEliminar)
+            if (position != -1) {
+                formasPagoList.removeAt(position)
+                formasPagoAdapter.notifyItemRemoved(position)
+            }
+        }
+        binding.recyclerViewFormasPago.adapter = formasPagoAdapter
+        binding.recyclerViewFormasPago.layoutManager = LinearLayoutManager(this)
     }
 
     private fun setupButtons() {
-        // Botón "Añadir Moneda"
         binding.buttonAnadirMoneda.setOnClickListener {
             val nuevaMoneda = binding.editTextNuevaMoneda.text.toString().trim()
             if (nuevaMoneda.isNotEmpty() && !monedasList.contains(nuevaMoneda)) {
@@ -64,7 +76,6 @@ class ConfiguracionActivity : AppCompatActivity() {
             }
         }
 
-        // Botón "Añadir Tipo de Gasto"
         binding.buttonAnadirTipoGasto.setOnClickListener {
             val nuevoTipoGasto = binding.editTextNuevoTipoGasto.text.toString().trim()
             if (nuevoTipoGasto.isNotEmpty() && !tiposGastoList.contains(nuevoTipoGasto)) {
@@ -74,7 +85,16 @@ class ConfiguracionActivity : AppCompatActivity() {
             }
         }
 
-        // Botón "Guardar Configuración"
+        // 3. Añadimos lógica para el nuevo botón
+        binding.buttonAnadirFormaPago.setOnClickListener {
+            val nuevaFormaPago = binding.editTextNuevaFormaPago.text.toString().trim()
+            if (nuevaFormaPago.isNotEmpty() && !formasPagoList.contains(nuevaFormaPago)) {
+                formasPagoList.add(nuevaFormaPago)
+                formasPagoAdapter.notifyItemInserted(formasPagoList.size - 1)
+                binding.editTextNuevaFormaPago.text?.clear()
+            }
+        }
+
         binding.buttonGuardarConfig.setOnClickListener {
             guardarConfiguracion()
         }
@@ -86,17 +106,21 @@ class ConfiguracionActivity : AppCompatActivity() {
         binding.editTextLegajo.setText(sharedPref.getString("LEGAJO", ""))
         binding.editTextCentroCostos.setText(sharedPref.getString("CENTRO_COSTOS", ""))
 
-        // Cargar monedas
         val monedasGuardadas = sharedPref.getStringSet("MONEDAS", setOf("Pesos", "Dólar"))
         monedasList.clear()
         monedasList.addAll(monedasGuardadas ?: emptySet())
         monedasAdapter.notifyDataSetChanged()
 
-        // Cargar tipos de gasto
         val tiposGastoGuardados = sharedPref.getStringSet("TIPOS_GASTO", setOf("Transporte", "Comida", "Alojamiento"))
         tiposGastoList.clear()
         tiposGastoList.addAll(tiposGastoGuardados ?: emptySet())
         tiposGastoAdapter.notifyDataSetChanged()
+
+        // 4. Cargamos la nueva lista
+        val formasPagoGuardadas = sharedPref.getStringSet("FORMAS_PAGO", setOf("Tarjeta de Crédito", "Efectivo"))
+        formasPagoList.clear()
+        formasPagoList.addAll(formasPagoGuardadas ?: emptySet())
+        formasPagoAdapter.notifyDataSetChanged()
     }
 
     private fun guardarConfiguracion() {
@@ -107,9 +131,10 @@ class ConfiguracionActivity : AppCompatActivity() {
             putString("LEGAJO", binding.editTextLegajo.text.toString())
             putString("CENTRO_COSTOS", binding.editTextCentroCostos.text.toString())
 
-            // Guardar ambas listas
             putStringSet("MONEDAS", monedasList.toSet())
             putStringSet("TIPOS_GASTO", tiposGastoList.toSet())
+            // 5. Guardamos la nueva lista
+            putStringSet("FORMAS_PAGO", formasPagoList.toSet())
 
             apply()
         }
