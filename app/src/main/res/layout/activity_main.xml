@@ -25,14 +25,17 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-        <com.google.android.material.floatingactionbutton.FloatingActionButton
+        <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
             android:id="@+id/fabAgregarViaje"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|end"
             android:layout_margin="16dp"
-            android:contentDescription="Añadir viaje"
-            app:srcCompat="@drawable/ic_add" />
+            android:text="Agregar un nuevo viaje"
+            app:icon="@drawable/ic_add"
+            android:backgroundTint="@color/verde_claro_invap"
+            android:textColor="@android:color/black"
+            app:iconTint="@android:color/black" />
 
     </androidx.coordinatorlayout.widget.CoordinatorLayout>
 

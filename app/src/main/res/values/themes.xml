@@ -3,12 +3,13 @@
     <style name="Base.Theme.RendicionDeGastos" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Customize your light theme here. -->
         <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+        <item name="colorPrimary">@color/verde_invap</item>
     </style>
 
     <style name="Theme.RendicionDeGastos" parent="Base.Theme.RendicionDeGastos" />
     <style name="Theme.App.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/white</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/invap_logoverde</item>
+        <item name="windowSplashScreenBackground">@color/verde_invap</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/invap_logoblanco</item>
         <item name="postSplashScreenTheme">@style/Theme.RendicionDeGastos</item>
     </style>
 </resources>
