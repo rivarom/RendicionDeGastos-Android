@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "792627152455",
+    "project_id": "invap-rendiciondegastos",
+    "storage_bucket": "invap-rendiciondegastos.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:792627152455:android:50e556e72bb86b81c3d362",
+        "android_client_info": {
+          "package_name": "com.invap.rendiciondegastos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBTNH1xmz8szFWJ-3st4xS1dBtJHLb9sqU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
