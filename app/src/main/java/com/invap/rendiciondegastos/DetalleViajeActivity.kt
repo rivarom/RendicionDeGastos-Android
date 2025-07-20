@@ -1,8 +1,7 @@
 package com.invap.rendiciondegastos
 
-import com.invap.rendiciondegastos.Gasto
-
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -27,19 +26,26 @@ class DetalleViajeActivity : AppCompatActivity() {
         binding = ActivityDetalleViajeBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // --- LÓGICA DEL TÍTULO ---
         viajeId = intent.getStringExtra("EXTRA_VIAJE_ID")
         val nombreViaje = intent.getStringExtra("EXTRA_VIAJE_NOMBRE")
-
-        // Usamos el recurso de string para crear el título formateado
         val tituloFormateado = getString(R.string.titulo_detalle_viaje, nombreViaje)
-        // Establecemos el nuevo título en el TextView
         binding.textViewNombreViajeDetalle.text = tituloFormateado
-        // --- FIN DE LA LÓGICA DEL TÍTULO ---
 
-        adapter = GastosAdapter(listaDeGastos) { gasto: Gasto ->
-            mostrarDialogoDeConfirmacion(gasto)
-        }
+        // 1. Actualizamos la creación del adaptador para manejar ambos clics
+        adapter = GastosAdapter(
+            listaDeGastos,
+            onItemClicked = { gasto ->
+                // CLIC CORTO: Si hay foto, la muestra. Si no, no hace nada.
+                if (gasto.urlFotoRecibo.isNotEmpty()) {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(gasto.urlFotoRecibo))
+                    startActivity(intent)
+                }
+            },
+            onItemLongClicked = { gasto ->
+                // CLIC LARGO: Muestra el menú de acciones.
+                mostrarDialogoDeAcciones(gasto)
+            }
+        )
         binding.recyclerViewGastos.adapter = adapter
         binding.recyclerViewGastos.layoutManager = LinearLayoutManager(this)
 
@@ -57,6 +63,43 @@ class DetalleViajeActivity : AppCompatActivity() {
         }
     }
 
+    // 2. Nueva función para el diálogo de acciones del gasto
+    private fun mostrarDialogoDeAcciones(gasto: Gasto) {
+        val opciones = arrayOf("Ver Recibo", "Editar Gasto", "Eliminar Gasto")
+
+        AlertDialog.Builder(this)
+            .setTitle(gasto.descripcion)
+            .setItems(opciones) { _, which ->
+                when (which) {
+                    0 -> { // Ver Recibo
+                        if (gasto.urlFotoRecibo.isNotEmpty()) {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(gasto.urlFotoRecibo))
+                            startActivity(intent)
+                        } else {
+                            Toast.makeText(this, "Este gasto no tiene un recibo adjunto", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    1 -> { // El usuario eligió "Editar Gasto"
+                        val intent = Intent(this, NuevoGastoActivity::class.java)
+                        // Pasamos todos los datos del gasto para la edición
+                        intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_ID, viajeId)
+                        intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_ID, gasto.id)
+                        intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_DESCRIPCION, gasto.descripcion)
+                        intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_MONTO, gasto.monto)
+                        intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_FECHA, gasto.fecha)
+                        intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_TIPO, gasto.tipoGasto)
+                        intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_MONEDA, gasto.moneda)
+                        intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_URL_FOTO, gasto.urlFotoRecibo)
+                        startActivity(intent)
+                    }
+                    2 -> { // Eliminar Gasto
+                        mostrarDialogoDeConfirmacion(gasto)
+                    }
+                }
+            }
+            .show()
+    }
+
     private fun mostrarDialogoDeConfirmacion(gasto: Gasto) {
         AlertDialog.Builder(this)
             .setTitle("Confirmar Eliminación")
@@ -69,7 +112,6 @@ class DetalleViajeActivity : AppCompatActivity() {
     }
 
     private fun eliminarGasto(gasto: Gasto) {
-        // Asegúrate que el gasto tenga un ID antes de intentar borrarlo.
         if (gasto.id.isEmpty()) {
             Toast.makeText(this, "Error: ID del gasto no encontrado", Toast.LENGTH_SHORT).show()
             return
@@ -77,12 +119,10 @@ class DetalleViajeActivity : AppCompatActivity() {
         db.collection("gastos").document(gasto.id)
             .delete()
             .addOnSuccessListener {
-                Log.d("DetalleViajeActivity", "Gasto eliminado con éxito")
                 Toast.makeText(this, "Gasto eliminado", Toast.LENGTH_SHORT).show()
-                cargarGastos() // Recargamos la lista
+                cargarGastos()
             }
             .addOnFailureListener { e ->
-                Log.w("DetalleViajeActivity", "Error al eliminar el gasto", e)
                 Toast.makeText(this, "Error al eliminar el gasto", Toast.LENGTH_SHORT).show()
             }
     }
@@ -101,7 +141,6 @@ class DetalleViajeActivity : AppCompatActivity() {
                 adapter.notifyDataSetChanged()
             }
             .addOnFailureListener { exception ->
-                Log.w("DetalleViajeActivity", "Error al cargar gastos.", exception)
                 Toast.makeText(this, "Error al cargar gastos.", Toast.LENGTH_SHORT).show()
             }
     }

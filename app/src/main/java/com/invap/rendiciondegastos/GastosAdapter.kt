@@ -1,6 +1,5 @@
 package com.invap.rendiciondegastos
 
-import com.invap.rendiciondegastos.Gasto
 import android.content.Intent
 import android.net.Uri
 import android.view.LayoutInflater
@@ -12,9 +11,10 @@ import androidx.recyclerview.widget.RecyclerView
 import java.text.NumberFormat
 import java.util.Locale
 
-// 1. Añadimos el nuevo parámetro para el clic largo
 class GastosAdapter(
     private val listaDeGastos: List<Gasto>,
+    // 1. Cambiamos el listener para que sea un clic corto
+    private val onItemClicked: (Gasto) -> Unit,
     private val onItemLongClicked: (Gasto) -> Unit
 ) : RecyclerView.Adapter<GastosAdapter.GastoViewHolder>() {
 
@@ -45,15 +45,12 @@ class GastosAdapter(
             holder.iconoFoto.visibility = View.GONE
         }
 
-        // Clic normal para ver la foto
+        // 2. Configuración del clic corto
         holder.itemView.setOnClickListener {
-            if (gasto.urlFotoRecibo.isNotEmpty()) {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(gasto.urlFotoRecibo))
-                holder.itemView.context.startActivity(intent)
-            }
+            onItemClicked(gasto)
         }
 
-        // 2. Configuración del clic largo para eliminar
+        // 3. Configuración del clic largo
         holder.itemView.setOnLongClickListener {
             onItemLongClicked(gasto)
             true
