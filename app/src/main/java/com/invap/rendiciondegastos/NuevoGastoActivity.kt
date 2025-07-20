@@ -35,6 +35,7 @@ class NuevoGastoActivity : AppCompatActivity() {
     private var fotoUri: Uri? = null
     private var idGastoAEditar: String? = null
     private var urlFotoExistente: String? = null
+    private val formasPagoList = mutableListOf<FormaDePago>()
 
     private val requestCameraPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -133,9 +134,16 @@ class NuevoGastoActivity : AppCompatActivity() {
         val tiposGastoAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, tiposGasto)
         binding.autoCompleteTipoGasto.setAdapter(tiposGastoAdapter)
 
-        // Cargar y configurar Formas de Pago
-        val formasPago = sharedPref.getStringSet("FORMAS_PAGO", emptySet())?.toList() ?: emptyList()
-        val formasPagoAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, formasPago)
+        val formasPagoGuardadas = sharedPref.getStringSet("FORMAS_PAGO", emptySet())
+        formasPagoList.clear()
+        formasPagoGuardadas?.forEach {
+            val partes = it.split("::")
+            if (partes.size == 2) {
+                formasPagoList.add(FormaDePago(partes[0], partes[1]))
+            }
+        }
+        val formasPagoNombres = formasPagoList.map { it.nombre }
+        val formasPagoAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, formasPagoNombres)
         binding.autoCompleteFormaPago.setAdapter(formasPagoAdapter)
     }
 
@@ -158,22 +166,53 @@ class NuevoGastoActivity : AppCompatActivity() {
         val fecha = binding.editTextFechaGasto.text.toString().trim()
         val tipoGasto = binding.autoCompleteTipoGasto.text.toString()
         val moneda = binding.autoCompleteMoneda.text.toString()
-        val formaDePago = binding.autoCompleteFormaPago.text.toString()
+        val formaDePagoNombre = binding.autoCompleteFormaPago.text.toString()
 
-        if (montoStr.isEmpty() || fecha.isEmpty() || viajeId == null || tipoGasto.isEmpty() || moneda.isEmpty() || formaDePago.isEmpty()) {
+        if (montoStr.isEmpty() || fecha.isEmpty() || viajeId == null || tipoGasto.isEmpty() || moneda.isEmpty() || formaDePagoNombre.isEmpty()) {
             Toast.makeText(this, "Por favor, completa todos los campos", Toast.LENGTH_SHORT).show()
             binding.buttonGuardarGasto.isEnabled = true
             return
         }
 
-        if (fotoUri != null) {
-            subirFotoYGuardarDatos(fotoUri!!, descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda, formaDePago)
-        } else {
-            guardarDatosEnFirestore(descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda, formaDePago, urlFotoExistente ?: "")
+        val formaDePagoSeleccionada = formasPagoList.find { it.nombre == formaDePagoNombre }
+        if (formaDePagoSeleccionada == null) {
+            Toast.makeText(this, "Forma de pago no válida", Toast.LENGTH_SHORT).show()
+            binding.buttonGuardarGasto.isEnabled = true
+            return
         }
+        val prefijo = formaDePagoSeleccionada.prefijo
+
+        if (idGastoAEditar != null) {
+            val tagExistente = intent.getStringExtra(EXTRA_GASTO_TAG) ?: ""
+            if (fotoUri != null) {
+                subirFotoYGuardarDatos(fotoUri!!, descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda, formaDePagoNombre, tagExistente)
+            } else {
+                guardarDatosEnFirestore(descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda, formaDePagoNombre, urlFotoExistente ?: "", tagExistente)
+            }
+            return
+        }
+
+        db.collection("gastos")
+            .whereEqualTo("viajeId", viajeId)
+            .whereEqualTo("formaDePago", formaDePagoNombre)
+            .get()
+            .addOnSuccessListener { documents ->
+                val nuevoNumeroSecuencial = documents.size() + 1
+                val nuevoTag = "$prefijo$nuevoNumeroSecuencial"
+
+                if (fotoUri != null) {
+                    subirFotoYGuardarDatos(fotoUri!!, descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda, formaDePagoNombre, nuevoTag)
+                } else {
+                    guardarDatosEnFirestore(descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda, formaDePagoNombre, "", nuevoTag)
+                }
+            }
+            .addOnFailureListener {
+                Toast.makeText(this, "Error al calcular el TAG", Toast.LENGTH_SHORT).show()
+                binding.buttonGuardarGasto.isEnabled = true
+            }
     }
 
-    private fun subirFotoYGuardarDatos(uri: Uri, descripcion: String, monto: Double, fecha: String, viajeId: String, tipoGasto: String, moneda: String, formaDePago: String) {
+    private fun subirFotoYGuardarDatos(uri: Uri, descripcion: String, monto: Double, fecha: String, viajeId: String, tipoGasto: String, moneda: String, formaDePago: String, tag: String) {
         val fotoRef = storage.reference.child("recibos/${UUID.randomUUID()}.jpg")
         Toast.makeText(this, "Subiendo foto...", Toast.LENGTH_SHORT).show()
         fotoRef.putFile(uri)
@@ -182,7 +221,7 @@ class NuevoGastoActivity : AppCompatActivity() {
                 fotoRef.downloadUrl
             }
             .addOnSuccessListener { downloadUrl ->
-                guardarDatosEnFirestore(descripcion, monto, fecha, viajeId, tipoGasto, moneda, formaDePago, downloadUrl.toString())
+                guardarDatosEnFirestore(descripcion, monto, fecha, viajeId, tipoGasto, moneda, formaDePago, downloadUrl.toString(), tag)
             }
             .addOnFailureListener {
                 Toast.makeText(this, "Error al subir la foto", Toast.LENGTH_SHORT).show()
@@ -190,7 +229,7 @@ class NuevoGastoActivity : AppCompatActivity() {
             }
     }
 
-    private fun guardarDatosEnFirestore(descripcion: String, monto: Double, fecha: String, viajeId: String, tipoGasto: String, moneda: String, formaDePago: String, urlFoto: String) {
+    private fun guardarDatosEnFirestore(descripcion: String, monto: Double, fecha: String, viajeId: String, tipoGasto: String, moneda: String, formaDePago: String, urlFoto: String, tag: String) {
         val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
@@ -205,9 +244,12 @@ class NuevoGastoActivity : AppCompatActivity() {
             "moneda" to moneda,
             "tipoGasto" to tipoGasto,
             "formaDePago" to formaDePago,
+            "tagGasto" to tag,
             "nombrePersona" to nombrePersona,
             "legajo" to legajo,
-            "centroCostos" to centroCostos
+            "centroCostos" to centroCostos,
+            // --- LÍNEA NUEVA ---
+            "timestamp" to System.currentTimeMillis() // Añade la marca de tiempo actual
         )
 
         val task = if (idGastoAEditar == null) {
@@ -218,7 +260,7 @@ class NuevoGastoActivity : AppCompatActivity() {
 
         task.addOnSuccessListener {
             val mensaje = if (idGastoAEditar == null) "Gasto guardado" else "Gasto actualizado"
-            Toast.makeText(this, "Gasto guardado", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, mensaje, Toast.LENGTH_SHORT).show()
             finish()
         }.addOnFailureListener {
             Toast.makeText(this, "Error al guardar los datos", Toast.LENGTH_SHORT).show()
@@ -237,5 +279,6 @@ class NuevoGastoActivity : AppCompatActivity() {
         const val EXTRA_GASTO_MONEDA = "EXTRA_GASTO_MONEDA"
         const val EXTRA_GASTO_FORMA_PAGO = "EXTRA_GASTO_FORMA_PAGO"
         const val EXTRA_GASTO_URL_FOTO = "EXTRA_GASTO_URL_FOTO"
+        const val EXTRA_GASTO_TAG = "EXTRA_GASTO_TAG"
     }
 }

@@ -13,12 +13,13 @@ import java.util.Locale
 
 class GastosAdapter(
     private val listaDeGastos: List<Gasto>,
-    // 1. Cambiamos el listener para que sea un clic corto
     private val onItemClicked: (Gasto) -> Unit,
     private val onItemLongClicked: (Gasto) -> Unit
 ) : RecyclerView.Adapter<GastosAdapter.GastoViewHolder>() {
 
     inner class GastoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        // 1. Añadimos la referencia al nuevo TextView del TAG
+        val tag: TextView = itemView.findViewById(R.id.textViewTagGasto)
         val descripcion: TextView = itemView.findViewById(R.id.textViewDescripcionGasto)
         val fecha: TextView = itemView.findViewById(R.id.textViewFechaGasto)
         val monto: TextView = itemView.findViewById(R.id.textViewMontoGasto)
@@ -33,6 +34,9 @@ class GastosAdapter(
 
     override fun onBindViewHolder(holder: GastoViewHolder, position: Int) {
         val gasto = listaDeGastos[position]
+
+        // 2. Mostramos el TAG
+        holder.tag.text = gasto.tagGasto
         holder.descripcion.text = gasto.descripcion
         holder.fecha.text = gasto.fecha
 
@@ -45,12 +49,10 @@ class GastosAdapter(
             holder.iconoFoto.visibility = View.GONE
         }
 
-        // 2. Configuración del clic corto
         holder.itemView.setOnClickListener {
             onItemClicked(gasto)
         }
 
-        // 3. Configuración del clic largo
         holder.itemView.setOnLongClickListener {
             onItemLongClicked(gasto)
             true

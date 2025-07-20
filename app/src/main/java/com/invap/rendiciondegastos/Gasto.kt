@@ -9,8 +9,9 @@ data class Gasto(
     val urlFotoRecibo: String = "",
     val moneda: String = "",
     val tipoGasto: String = "",
-    // --- Nuevo campo ---
     val formaDePago: String = "",
+    // --- Nuevo campo ---
+    val tagGasto: String = "",
     // --- Campos de configuración ---
     val nombrePersona: String = "",
     val legajo: String = "",

@@ -128,6 +128,7 @@ class DetalleViajeActivity : AppCompatActivity() {
     private fun cargarGastos() {
         db.collection("gastos")
             .whereEqualTo("viajeId", viajeId)
+            .orderBy("timestamp")
             .get()
             .addOnSuccessListener { result ->
                 listaDeGastos.clear()
