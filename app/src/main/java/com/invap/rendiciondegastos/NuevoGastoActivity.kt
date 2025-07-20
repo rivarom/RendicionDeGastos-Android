@@ -1,6 +1,7 @@
 package com.invap.rendiciondegastos
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -130,14 +131,25 @@ class NuevoGastoActivity : AppCompatActivity() {
     }
 
     private fun guardarDatosEnFirestore(descripcion: String, monto: Double, fecha: String, viajeId: String, urlFoto: String) {
+        // 1. Accedemos a la configuración guardada
+        val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
+        val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
+        val legajo = sharedPref.getString("LEGAJO", "") ?: ""
+        val centroCostos = sharedPref.getString("CENTRO_COSTOS", "") ?: ""
+
+        // 2. Creamos el objeto del nuevo gasto incluyendo todos los datos
         val nuevoGasto = hashMapOf(
             "viajeId" to viajeId,
             "descripcion" to descripcion,
             "monto" to monto,
             "fecha" to fecha,
-            "urlFotoRecibo" to urlFoto
+            "urlFotoRecibo" to urlFoto,
+            "nombrePersona" to nombrePersona,
+            "legajo" to legajo,
+            "centroCostos" to centroCostos
         )
 
+        // 3. Guardamos el objeto completo en Firestore
         db.collection("gastos")
             .add(nuevoGasto)
             .addOnSuccessListener {

@@ -1,6 +1,7 @@
 package com.invap.rendiciondegastos
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -135,15 +136,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun guardarNuevoViaje(nombre: String, fecha: String) {
+        // 1. Accedemos a la configuración guardada
+        val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
+        val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
+        val legajo = sharedPref.getString("LEGAJO", "") ?: ""
+        val centroCostos = sharedPref.getString("CENTRO_COSTOS", "") ?: ""
+
+        // 2. Creamos el objeto del nuevo viaje incluyendo todos los datos
         val nuevoViaje = hashMapOf(
             "nombre" to nombre,
-            "fecha" to fecha
+            "fecha" to fecha,
+            "nombrePersona" to nombrePersona,
+            "legajo" to legajo,
+            "centroCostos" to centroCostos
         )
 
+        // 3. Guardamos el objeto completo en Firestore
         db.collection("viajes")
             .add(nuevoViaje)
-            .addOnSuccessListener { documentReference ->
-                Log.d("MainActivity", "Documento añadido con ID: ${documentReference.id}")
+            .addOnSuccessListener {
+                Log.d("MainActivity", "Documento añadido con ID: ${it.id}")
                 cargarViajesDesdeFirestore()
             }
             .addOnFailureListener { e ->

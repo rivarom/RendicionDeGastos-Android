@@ -1,6 +1,7 @@
 package com.invap.rendiciondegastos
 
-import Gasto
+import com.invap.rendiciondegastos.Gasto
+
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
