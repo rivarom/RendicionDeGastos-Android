@@ -17,9 +17,9 @@ class ConfiguracionActivity : AppCompatActivity() {
     private val tiposGastoList = mutableListOf<String>()
     private lateinit var tiposGastoAdapter: ConfiguracionAdapter
 
-    // 1. Añadimos variables para la nueva lista
-    private val formasPagoList = mutableListOf<String>()
-    private lateinit var formasPagoAdapter: ConfiguracionAdapter
+    // Variables para la lista de Formas de Pago
+    private val formasPagoList = mutableListOf<FormaDePago>()
+    private lateinit var formasPagoAdapter: ConfiguracionConPrefijoAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,7 +32,7 @@ class ConfiguracionActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerViews() {
-        // Configurar RecyclerView de Monedas
+        // Configuración de Monedas
         monedasAdapter = ConfiguracionAdapter(monedasList) { monedaAEliminar ->
             val position = monedasList.indexOf(monedaAEliminar)
             if (position != -1) {
@@ -43,7 +43,7 @@ class ConfiguracionActivity : AppCompatActivity() {
         binding.recyclerViewMonedas.adapter = monedasAdapter
         binding.recyclerViewMonedas.layoutManager = LinearLayoutManager(this)
 
-        // Configurar RecyclerView de Tipos de Gasto
+        // Configuración de Tipos de Gasto
         tiposGastoAdapter = ConfiguracionAdapter(tiposGastoList) { tipoGastoAEliminar ->
             val position = tiposGastoList.indexOf(tipoGastoAEliminar)
             if (position != -1) {
@@ -54,8 +54,8 @@ class ConfiguracionActivity : AppCompatActivity() {
         binding.recyclerViewTiposGasto.adapter = tiposGastoAdapter
         binding.recyclerViewTiposGasto.layoutManager = LinearLayoutManager(this)
 
-        // 2. Configuramos el nuevo RecyclerView
-        formasPagoAdapter = ConfiguracionAdapter(formasPagoList) { formaPagoAEliminar ->
+        // Configuración de Formas de Pago con el nuevo adaptador
+        formasPagoAdapter = ConfiguracionConPrefijoAdapter(formasPagoList) { formaPagoAEliminar ->
             val position = formasPagoList.indexOf(formaPagoAEliminar)
             if (position != -1) {
                 formasPagoList.removeAt(position)
@@ -67,6 +67,7 @@ class ConfiguracionActivity : AppCompatActivity() {
     }
 
     private fun setupButtons() {
+        // Botón "Añadir Moneda"
         binding.buttonAnadirMoneda.setOnClickListener {
             val nuevaMoneda = binding.editTextNuevaMoneda.text.toString().trim()
             if (nuevaMoneda.isNotEmpty() && !monedasList.contains(nuevaMoneda)) {
@@ -76,6 +77,7 @@ class ConfiguracionActivity : AppCompatActivity() {
             }
         }
 
+        // Botón "Añadir Tipo de Gasto"
         binding.buttonAnadirTipoGasto.setOnClickListener {
             val nuevoTipoGasto = binding.editTextNuevoTipoGasto.text.toString().trim()
             if (nuevoTipoGasto.isNotEmpty() && !tiposGastoList.contains(nuevoTipoGasto)) {
@@ -85,16 +87,22 @@ class ConfiguracionActivity : AppCompatActivity() {
             }
         }
 
-        // 3. Añadimos lógica para el nuevo botón
+        // Botón "Añadir Forma de Pago"
         binding.buttonAnadirFormaPago.setOnClickListener {
-            val nuevaFormaPago = binding.editTextNuevaFormaPago.text.toString().trim()
-            if (nuevaFormaPago.isNotEmpty() && !formasPagoList.contains(nuevaFormaPago)) {
-                formasPagoList.add(nuevaFormaPago)
-                formasPagoAdapter.notifyItemInserted(formasPagoList.size - 1)
-                binding.editTextNuevaFormaPago.text?.clear()
+            val nombre = binding.editTextNuevaFormaPagoNombre.text.toString().trim()
+            val prefijo = binding.editTextNuevaFormaPagoPrefijo.text.toString().trim()
+            if (nombre.isNotEmpty() && prefijo.isNotEmpty()) {
+                val nuevaFormaPago = FormaDePago(nombre, prefijo)
+                if (!formasPagoList.contains(nuevaFormaPago)) {
+                    formasPagoList.add(nuevaFormaPago)
+                    formasPagoAdapter.notifyItemInserted(formasPagoList.size - 1)
+                    binding.editTextNuevaFormaPagoNombre.text?.clear()
+                    binding.editTextNuevaFormaPagoPrefijo.text?.clear()
+                }
             }
         }
 
+        // Botón "Guardar Configuración"
         binding.buttonGuardarConfig.setOnClickListener {
             guardarConfiguracion()
         }
@@ -106,25 +114,35 @@ class ConfiguracionActivity : AppCompatActivity() {
         binding.editTextLegajo.setText(sharedPref.getString("LEGAJO", ""))
         binding.editTextCentroCostos.setText(sharedPref.getString("CENTRO_COSTOS", ""))
 
+        // Cargar monedas
         val monedasGuardadas = sharedPref.getStringSet("MONEDAS", setOf("Pesos", "Dólar"))
         monedasList.clear()
         monedasList.addAll(monedasGuardadas ?: emptySet())
         monedasAdapter.notifyDataSetChanged()
 
+        // Cargar tipos de gasto
         val tiposGastoGuardados = sharedPref.getStringSet("TIPOS_GASTO", setOf("Transporte", "Comida", "Alojamiento"))
         tiposGastoList.clear()
         tiposGastoList.addAll(tiposGastoGuardados ?: emptySet())
         tiposGastoAdapter.notifyDataSetChanged()
 
-        // 4. Cargamos la nueva lista
-        val formasPagoGuardadas = sharedPref.getStringSet("FORMAS_PAGO", setOf("Tarjeta de Crédito", "Efectivo"))
+        // Cargar formas de pago
+        val formasPagoGuardadas = sharedPref.getStringSet("FORMAS_PAGO", setOf("Tarjeta de Crédito::TC", "Efectivo::EFE"))
         formasPagoList.clear()
-        formasPagoList.addAll(formasPagoGuardadas ?: emptySet())
+        formasPagoGuardadas?.forEach {
+            val partes = it.split("::")
+            if (partes.size == 2) {
+                formasPagoList.add(FormaDePago(partes[0], partes[1]))
+            }
+        }
         formasPagoAdapter.notifyDataSetChanged()
     }
 
     private fun guardarConfiguracion() {
         val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
+
+        // Convertimos la lista de objetos FormaDePago a un Set de Strings para guardarla
+        val formasPagoAGuardar = formasPagoList.map { "${it.nombre}::${it.prefijo}" }.toSet()
 
         with(sharedPref.edit()) {
             putString("NOMBRE_PERSONA", binding.editTextNombrePersona.text.toString())
@@ -133,8 +151,7 @@ class ConfiguracionActivity : AppCompatActivity() {
 
             putStringSet("MONEDAS", monedasList.toSet())
             putStringSet("TIPOS_GASTO", tiposGastoList.toSet())
-            // 5. Guardamos la nueva lista
-            putStringSet("FORMAS_PAGO", formasPagoList.toSet())
+            putStringSet("FORMAS_PAGO", formasPagoAGuardar)
 
             apply()
         }
