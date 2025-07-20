@@ -36,13 +36,17 @@
 
     </LinearLayout>
 
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
+    <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
         android:id="@+id/fabAgregarGasto"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
         android:layout_margin="16dp"
-        app:srcCompat="@drawable/ic_add"
-        android:contentDescription="Añadir nuevo gasto" />
+        android:text="Agregar nuevo gasto"
+        app:icon="@drawable/ic_add"
+
+        android:backgroundTint="@color/verde_claro_invap"
+        android:textColor="@android:color/black"
+        app:iconTint="@android:color/black" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

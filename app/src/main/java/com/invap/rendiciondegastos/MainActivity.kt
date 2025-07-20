@@ -29,50 +29,39 @@ class MainActivity : AppCompatActivity() {
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val data: Intent? = result.data
-            val nombre = data?.getStringExtra(NuevoViajeActivity.EXTRA_NOMBRE)
-            val fecha = data?.getStringExtra(NuevoViajeActivity.EXTRA_FECHA)
+            val nombre = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_NOMBRE)
+            val fecha = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA)
+            val id = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_ID)
 
             if (nombre != null && fecha != null) {
-                guardarNuevoViaje(nombre, fecha)
+                if (id == null) {
+                    guardarNuevoViaje(nombre, fecha)
+                } else {
+                    actualizarViaje(id, nombre, fecha)
+                }
             }
         }
-    }
-    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
-        menuInflater.inflate(R.menu.main_menu, menu)
-        return true
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_settings -> {
-                // Abrimos la pantalla de configuración
-                startActivity(Intent(this, ConfiguracionActivity::class.java))
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
-    }
     override fun onCreate(savedInstanceState: Bundle?) {
-        // La llamada a installSplashScreen() debe ser lo primero
         installSplashScreen()
-
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        // 2. Establecemos la Toolbar como la barra de acción de la actividad
         setSupportActionBar(binding.toolbar)
 
-        // 1. Actualizamos la creación del adaptador para incluir la nueva función de clic largo
         adapter = ViajesAdapter(
             listaDeViajes,
-            onItemClicked = { viaje ->
+            // 1. CLIC CORTO: Ahora va directo a los detalles del viaje (gastos).
+            onItemClicked = { viaje: Viaje ->
                 val intent = Intent(this, DetalleViajeActivity::class.java)
                 intent.putExtra("EXTRA_VIAJE_ID", viaje.id)
                 intent.putExtra("EXTRA_VIAJE_NOMBRE", viaje.nombre)
                 startActivity(intent)
             },
-            onItemLongClicked = { viaje ->
-                mostrarDialogoDeConfirmacion(viaje)
+            // 2. CLIC LARGO: Ahora muestra el nuevo menú de acciones.
+            onItemLongClicked = { viaje: Viaje ->
+                mostrarDialogoDeAcciones(viaje)
             }
         )
 
@@ -85,12 +74,55 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // 3. NUEVO DIÁLOGO DE ACCIONES PARA EL CLIC LARGO
+    private fun mostrarDialogoDeAcciones(viaje: Viaje) {
+        val opciones = arrayOf("Ver Gastos", "Editar Viaje", "Eliminar Viaje")
+
+        AlertDialog.Builder(this)
+            .setTitle(viaje.nombre)
+            .setItems(opciones) { _, which ->
+                when (which) {
+                    0 -> { // Ver Gastos
+                        val intent = Intent(this, DetalleViajeActivity::class.java)
+                        intent.putExtra("EXTRA_VIAJE_ID", viaje.id)
+                        intent.putExtra("EXTRA_VIAJE_NOMBRE", viaje.nombre)
+                        startActivity(intent)
+                    }
+                    1 -> { // Editar Viaje
+                        val intent = Intent(this, NuevoViajeActivity::class.java)
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_ID, viaje.id)
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_NOMBRE, viaje.nombre)
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA, viaje.fecha)
+                        nuevoViajeResultLauncher.launch(intent)
+                    }
+                    2 -> { // Eliminar Viaje
+                        mostrarDialogoDeConfirmacion(viaje)
+                    }
+                }
+            }
+            .show()
+    }
+
     override fun onResume() {
         super.onResume()
         cargarViajesDesdeFirestore()
     }
 
-    // 2. Nueva función para mostrar un diálogo de alerta
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                startActivity(Intent(this, ConfiguracionActivity::class.java))
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
     private fun mostrarDialogoDeConfirmacion(viaje: Viaje) {
         AlertDialog.Builder(this)
             .setTitle("Confirmar Eliminación")
@@ -102,7 +134,6 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    // 3. Nueva función para eliminar el viaje de Firestore
     private fun eliminarViaje(viaje: Viaje) {
         if (viaje.id.isEmpty()) {
             Toast.makeText(this, "Error: ID del viaje no encontrado", Toast.LENGTH_SHORT).show()
@@ -111,19 +142,16 @@ class MainActivity : AppCompatActivity() {
         db.collection("viajes").document(viaje.id)
             .delete()
             .addOnSuccessListener {
-                Log.d("MainActivity", "Viaje eliminado con éxito")
                 Toast.makeText(this, "Viaje eliminado", Toast.LENGTH_SHORT).show()
-                cargarViajesDesdeFirestore() // Recargamos la lista para que desaparezca el elemento
+                cargarViajesDesdeFirestore()
             }
             .addOnFailureListener { e ->
-                Log.w("MainActivity", "Error al eliminar el viaje", e)
                 Toast.makeText(this, "Error al eliminar el viaje", Toast.LENGTH_SHORT).show()
             }
     }
 
     private fun cargarViajesDesdeFirestore() {
-        db.collection("viajes")
-            .get()
+        db.collection("viajes").get()
             .addOnSuccessListener { result ->
                 listaDeViajes.clear()
                 for (document in result) {
@@ -134,19 +162,16 @@ class MainActivity : AppCompatActivity() {
                 adapter.notifyDataSetChanged()
             }
             .addOnFailureListener { exception ->
-                Log.w("MainActivity", "Error al obtener documentos.", exception)
                 Toast.makeText(this, "Error al cargar los viajes.", Toast.LENGTH_SHORT).show()
             }
     }
 
     private fun guardarNuevoViaje(nombre: String, fecha: String) {
-        // 1. Accedemos a la configuración guardada
         val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
         val centroCostos = sharedPref.getString("CENTRO_COSTOS", "") ?: ""
 
-        // 2. Creamos el objeto del nuevo viaje incluyendo todos los datos
         val nuevoViaje = hashMapOf(
             "nombre" to nombre,
             "fecha" to fecha,
@@ -155,16 +180,37 @@ class MainActivity : AppCompatActivity() {
             "centroCostos" to centroCostos
         )
 
-        // 3. Guardamos el objeto completo en Firestore
-        db.collection("viajes")
-            .add(nuevoViaje)
+        db.collection("viajes").add(nuevoViaje)
             .addOnSuccessListener {
-                Log.d("MainActivity", "Documento añadido con ID: ${it.id}")
+                Toast.makeText(this, "Viaje guardado", Toast.LENGTH_SHORT).show()
                 cargarViajesDesdeFirestore()
             }
             .addOnFailureListener { e ->
-                Log.w("MainActivity", "Error al añadir documento", e)
-                Toast.makeText(this, "Error al guardar el viaje.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Error al guardar el viaje", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun actualizarViaje(id: String, nombre: String, fecha: String) {
+        val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
+        val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
+        val legajo = sharedPref.getString("LEGAJO", "") ?: ""
+        val centroCostos = sharedPref.getString("CENTRO_COSTOS", "") ?: ""
+
+        val viajeActualizado = hashMapOf(
+            "nombre" to nombre,
+            "fecha" to fecha,
+            "nombrePersona" to nombrePersona,
+            "legajo" to legajo,
+            "centroCostos" to centroCostos
+        )
+
+        db.collection("viajes").document(id).set(viajeActualizado)
+            .addOnSuccessListener {
+                Toast.makeText(this, "Viaje actualizado", Toast.LENGTH_SHORT).show()
+                cargarViajesDesdeFirestore()
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Error al actualizar el viaje", Toast.LENGTH_SHORT).show()
             }
     }
 }

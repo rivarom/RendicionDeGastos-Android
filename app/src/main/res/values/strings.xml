@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">INVAP - Rendición De Viajes</string>
+    <string name="titulo_detalle_viaje">Gastos correspondientes al viaje: %1$s</string>
 </resources>

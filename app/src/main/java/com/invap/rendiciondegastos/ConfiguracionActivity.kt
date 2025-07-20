@@ -4,42 +4,116 @@ import android.content.Context
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.invap.rendiciondegastos.databinding.ActivityConfiguracionBinding
 
 class ConfiguracionActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityConfiguracionBinding
 
+    // Variables para la lista de Monedas
+    private val monedasList = mutableListOf<String>()
+    private lateinit var monedasAdapter: ConfiguracionAdapter
+
+    // Variables para la lista de Tipos de Gasto
+    private val tiposGastoList = mutableListOf<String>()
+    private lateinit var tiposGastoAdapter: ConfiguracionAdapter
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityConfiguracionBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        setupRecyclerViews()
         cargarConfiguracion()
+        setupButtons()
+    }
 
+    private fun setupRecyclerViews() {
+        // Configurar RecyclerView de Monedas
+        monedasAdapter = ConfiguracionAdapter(monedasList) { monedaAEliminar ->
+            val position = monedasList.indexOf(monedaAEliminar)
+            if (position != -1) {
+                monedasList.removeAt(position)
+                monedasAdapter.notifyItemRemoved(position)
+            }
+        }
+        binding.recyclerViewMonedas.adapter = monedasAdapter
+        binding.recyclerViewMonedas.layoutManager = LinearLayoutManager(this)
+
+        // Configurar RecyclerView de Tipos de Gasto
+        tiposGastoAdapter = ConfiguracionAdapter(tiposGastoList) { tipoGastoAEliminar ->
+            val position = tiposGastoList.indexOf(tipoGastoAEliminar)
+            if (position != -1) {
+                tiposGastoList.removeAt(position)
+                tiposGastoAdapter.notifyItemRemoved(position)
+            }
+        }
+        binding.recyclerViewTiposGasto.adapter = tiposGastoAdapter
+        binding.recyclerViewTiposGasto.layoutManager = LinearLayoutManager(this)
+    }
+
+    private fun setupButtons() {
+        // Botón "Añadir Moneda"
+        binding.buttonAnadirMoneda.setOnClickListener {
+            val nuevaMoneda = binding.editTextNuevaMoneda.text.toString().trim()
+            if (nuevaMoneda.isNotEmpty() && !monedasList.contains(nuevaMoneda)) {
+                monedasList.add(nuevaMoneda)
+                monedasAdapter.notifyItemInserted(monedasList.size - 1)
+                binding.editTextNuevaMoneda.text?.clear()
+            }
+        }
+
+        // Botón "Añadir Tipo de Gasto"
+        binding.buttonAnadirTipoGasto.setOnClickListener {
+            val nuevoTipoGasto = binding.editTextNuevoTipoGasto.text.toString().trim()
+            if (nuevoTipoGasto.isNotEmpty() && !tiposGastoList.contains(nuevoTipoGasto)) {
+                tiposGastoList.add(nuevoTipoGasto)
+                tiposGastoAdapter.notifyItemInserted(tiposGastoList.size - 1)
+                binding.editTextNuevoTipoGasto.text?.clear()
+            }
+        }
+
+        // Botón "Guardar Configuración"
         binding.buttonGuardarConfig.setOnClickListener {
             guardarConfiguracion()
         }
     }
 
     private fun cargarConfiguracion() {
-        // Accedemos al archivo de preferencias compartidas
         val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
-        // Leemos cada valor y lo ponemos en su campo de texto
         binding.editTextNombrePersona.setText(sharedPref.getString("NOMBRE_PERSONA", ""))
         binding.editTextLegajo.setText(sharedPref.getString("LEGAJO", ""))
         binding.editTextCentroCostos.setText(sharedPref.getString("CENTRO_COSTOS", ""))
+
+        // Cargar monedas
+        val monedasGuardadas = sharedPref.getStringSet("MONEDAS", setOf("Pesos", "Dólar"))
+        monedasList.clear()
+        monedasList.addAll(monedasGuardadas ?: emptySet())
+        monedasAdapter.notifyDataSetChanged()
+
+        // Cargar tipos de gasto
+        val tiposGastoGuardados = sharedPref.getStringSet("TIPOS_GASTO", setOf("Transporte", "Comida", "Alojamiento"))
+        tiposGastoList.clear()
+        tiposGastoList.addAll(tiposGastoGuardados ?: emptySet())
+        tiposGastoAdapter.notifyDataSetChanged()
     }
 
     private fun guardarConfiguracion() {
         val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
+
         with(sharedPref.edit()) {
             putString("NOMBRE_PERSONA", binding.editTextNombrePersona.text.toString())
             putString("LEGAJO", binding.editTextLegajo.text.toString())
             putString("CENTRO_COSTOS", binding.editTextCentroCostos.text.toString())
-            apply() // Usamos apply() para guardar los cambios de forma asíncrona
+
+            // Guardar ambas listas
+            putStringSet("MONEDAS", monedasList.toSet())
+            putStringSet("TIPOS_GASTO", tiposGastoList.toSet())
+
+            apply()
         }
         Toast.makeText(this, "Configuración guardada", Toast.LENGTH_SHORT).show()
-        finish() // Cerramos la pantalla al guardar
+        finish()
     }
 }

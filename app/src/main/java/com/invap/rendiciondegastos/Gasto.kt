@@ -7,7 +7,10 @@ data class Gasto(
     val monto: Double = 0.0,
     val fecha: String = "",
     val urlFotoRecibo: String = "",
-    // Nuevos campos de configuración
+    // --- Nuevos campos ---
+    val moneda: String = "",
+    val tipoGasto: String = "",
+    // --- Campos de configuración ---
     val nombrePersona: String = "",
     val legajo: String = "",
     val centroCostos: String = ""

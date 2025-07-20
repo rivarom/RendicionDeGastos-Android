@@ -27,11 +27,17 @@ class DetalleViajeActivity : AppCompatActivity() {
         binding = ActivityDetalleViajeBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // --- LÓGICA DEL TÍTULO ---
         viajeId = intent.getStringExtra("EXTRA_VIAJE_ID")
         val nombreViaje = intent.getStringExtra("EXTRA_VIAJE_NOMBRE")
-        binding.textViewNombreViajeDetalle.text = nombreViaje
 
-        adapter = GastosAdapter(listaDeGastos) { gasto : Gasto ->
+        // Usamos el recurso de string para crear el título formateado
+        val tituloFormateado = getString(R.string.titulo_detalle_viaje, nombreViaje)
+        // Establecemos el nuevo título en el TextView
+        binding.textViewNombreViajeDetalle.text = tituloFormateado
+        // --- FIN DE LA LÓGICA DEL TÍTULO ---
+
+        adapter = GastosAdapter(listaDeGastos) { gasto: Gasto ->
             mostrarDialogoDeConfirmacion(gasto)
         }
         binding.recyclerViewGastos.adapter = adapter

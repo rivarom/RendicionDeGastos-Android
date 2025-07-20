@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -42,8 +43,6 @@ class NuevoGastoActivity : AppCompatActivity() {
     private val cameraLauncher =
         registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
             if (success) {
-                Log.d("NuevoGastoActivity", "Foto tomada con éxito: $fotoUri")
-                // Muestra la vista previa de la imagen
                 binding.imageViewFotoRecibo.setImageURI(fotoUri)
                 binding.imageViewFotoRecibo.visibility = View.VISIBLE
             }
@@ -54,6 +53,8 @@ class NuevoGastoActivity : AppCompatActivity() {
         binding = ActivityNuevoGastoBinding.inflate(layoutInflater)
         setContentView(binding.root)
         viajeId = intent.getStringExtra("EXTRA_VIAJE_ID")
+
+        cargarOpcionesDesplegables()
 
         binding.buttonTomarFoto.setOnClickListener {
             when {
@@ -67,6 +68,18 @@ class NuevoGastoActivity : AppCompatActivity() {
         binding.buttonGuardarGasto.setOnClickListener {
             guardarGasto()
         }
+    }
+
+    private fun cargarOpcionesDesplegables() {
+        val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
+
+        val monedas = sharedPref.getStringSet("MONEDAS", emptySet())?.toList() ?: emptyList()
+        val monedasAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, monedas)
+        binding.autoCompleteMoneda.setAdapter(monedasAdapter)
+
+        val tiposGasto = sharedPref.getStringSet("TIPOS_GASTO", emptySet())?.toList() ?: emptyList()
+        val tiposGastoAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, tiposGasto)
+        binding.autoCompleteTipoGasto.setAdapter(tiposGastoAdapter)
     }
 
     private fun abrirCamara() {
@@ -84,45 +97,39 @@ class NuevoGastoActivity : AppCompatActivity() {
     }
 
     private fun guardarGasto() {
-        // Deshabilitar el botón para evitar múltiples clics mientras se guarda
         binding.buttonGuardarGasto.isEnabled = false
 
         val descripcion = binding.editTextDescripcionGasto.text.toString()
         val montoStr = binding.editTextMontoGasto.text.toString()
         val fecha = binding.editTextFechaGasto.text.toString()
+        val tipoGasto = binding.autoCompleteTipoGasto.text.toString()
+        val moneda = binding.autoCompleteMoneda.text.toString()
 
-        if (descripcion.isEmpty() || montoStr.isEmpty() || fecha.isEmpty() || viajeId == null) {
+        if (descripcion.isEmpty() || montoStr.isEmpty() || fecha.isEmpty() || viajeId == null || tipoGasto.isEmpty() || moneda.isEmpty()) {
             Toast.makeText(this, "Por favor, completa todos los campos", Toast.LENGTH_SHORT).show()
             binding.buttonGuardarGasto.isEnabled = true
             return
         }
 
-        // Si hay una foto, la subimos primero. Si no, guardamos el gasto sin foto.
         if (fotoUri != null) {
-            subirFotoYGuardarGasto(fotoUri!!, descripcion, montoStr.toDouble(), fecha, viajeId!!)
+            subirFotoYGuardarGasto(fotoUri!!, descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda)
         } else {
-            guardarDatosEnFirestore(descripcion, montoStr.toDouble(), fecha, viajeId!!, "")
+            guardarDatosEnFirestore(descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda, "")
         }
     }
 
-    private fun subirFotoYGuardarGasto(uri: Uri, descripcion: String, monto: Double, fecha: String, viajeId: String) {
-        // Crea una referencia única para cada foto en Storage
+    private fun subirFotoYGuardarGasto(uri: Uri, descripcion: String, monto: Double, fecha: String, viajeId: String, tipoGasto: String, moneda: String) {
         val fotoRef = storage.reference.child("recibos/${UUID.randomUUID()}.jpg")
 
         Toast.makeText(this, "Subiendo foto...", Toast.LENGTH_SHORT).show()
 
-        // Sube el archivo
         fotoRef.putFile(uri)
             .continueWithTask { task ->
-                if (!task.isSuccessful) {
-                    task.exception?.let { throw it }
-                }
-                // Si la subida fue exitosa, obtenemos la URL de descarga
+                if (!task.isSuccessful) { task.exception?.let { throw it } }
                 fotoRef.downloadUrl
             }
             .addOnSuccessListener { downloadUrl ->
-                Log.d("NuevoGastoActivity", "URL de la foto: $downloadUrl")
-                guardarDatosEnFirestore(descripcion, monto, fecha, viajeId, downloadUrl.toString())
+                guardarDatosEnFirestore(descripcion, monto, fecha, viajeId, tipoGasto, moneda, downloadUrl.toString())
             }
             .addOnFailureListener {
                 Toast.makeText(this, "Error al subir la foto", Toast.LENGTH_SHORT).show()
@@ -130,30 +137,27 @@ class NuevoGastoActivity : AppCompatActivity() {
             }
     }
 
-    private fun guardarDatosEnFirestore(descripcion: String, monto: Double, fecha: String, viajeId: String, urlFoto: String) {
-        // 1. Accedemos a la configuración guardada
+    private fun guardarDatosEnFirestore(descripcion: String, monto: Double, fecha: String, viajeId: String, tipoGasto: String, moneda: String, urlFoto: String) {
         val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
         val centroCostos = sharedPref.getString("CENTRO_COSTOS", "") ?: ""
 
-        // 2. Creamos el objeto del nuevo gasto incluyendo todos los datos
-        val nuevoGasto = hashMapOf(
-            "viajeId" to viajeId,
-            "descripcion" to descripcion,
-            "monto" to monto,
-            "fecha" to fecha,
-            "urlFotoRecibo" to urlFoto,
-            "nombrePersona" to nombrePersona,
-            "legajo" to legajo,
-            "centroCostos" to centroCostos
+        val nuevoGasto = Gasto(
+            viajeId = viajeId,
+            descripcion = descripcion,
+            monto = monto,
+            fecha = fecha,
+            urlFotoRecibo = urlFoto,
+            moneda = moneda,
+            tipoGasto = tipoGasto,
+            nombrePersona = nombrePersona,
+            legajo = legajo,
+            centroCostos = centroCostos
         )
 
-        // 3. Guardamos el objeto completo en Firestore
-        db.collection("gastos")
-            .add(nuevoGasto)
+        db.collection("gastos").add(nuevoGasto)
             .addOnSuccessListener {
-                Log.d("NuevoGastoActivity", "Gasto guardado con éxito")
                 Toast.makeText(this, "Gasto guardado", Toast.LENGTH_SHORT).show()
                 finish()
             }
