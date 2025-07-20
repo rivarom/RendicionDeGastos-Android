@@ -15,6 +15,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import com.google.firebase.auth.ktx.auth
 import com.invap.rendiciondegastos.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
@@ -115,10 +116,21 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    // Dentro de MainActivity.kt
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_settings -> {
                 startActivity(Intent(this, ConfiguracionActivity::class.java))
+                true
+            }
+            // Nuevo caso para manejar el clic en "Cerrar Sesión"
+            R.id.action_logout -> {
+                // Llama directamente a Firebase.auth en lugar de a una variable 'auth'
+                Firebase.auth.signOut()
+                val intent = Intent(this, LoginActivity::class.java)
+                startActivity(intent)
+                finish() // Cierra MainActivity
                 true
             }
             else -> super.onOptionsItemSelected(item)

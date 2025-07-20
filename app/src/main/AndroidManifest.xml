@@ -15,21 +15,23 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.RendicionDeGastos"
         tools:targetApi="31">
+
         <activity
-            android:name=".ConfiguracionActivity"
-            android:exported="false" />
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:theme="@style/Theme.App.Starting">
+            android:name=".LoginActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".MainActivity"
+            android:theme="@style/Theme.App.Starting" />
         <activity android:name=".NuevoViajeActivity" />
         <activity android:name=".DetalleViajeActivity" />
         <activity android:name=".NuevoGastoActivity" />
+        <activity android:name=".ConfiguracionActivity" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -40,6 +42,7 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
     </application>
 
 </manifest>
