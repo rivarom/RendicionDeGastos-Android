@@ -6,4 +6,9 @@
     </style>
 
     <style name="Theme.RendicionDeGastos" parent="Base.Theme.RendicionDeGastos" />
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/white</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/invap_logoverde</item>
+        <item name="postSplashScreenTheme">@style/Theme.RendicionDeGastos</item>
+    </style>
 </resources>
