@@ -16,6 +16,7 @@ class DetalleViajeActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityDetalleViajeBinding
     private var viajeId: String? = null
+    private var monedaPorDefecto: String? = null
 
     private val db = Firebase.firestore
     private val listaDeGastos = mutableListOf<Gasto>()
@@ -28,21 +29,19 @@ class DetalleViajeActivity : AppCompatActivity() {
 
         viajeId = intent.getStringExtra("EXTRA_VIAJE_ID")
         val nombreViaje = intent.getStringExtra("EXTRA_VIAJE_NOMBRE")
+        monedaPorDefecto = intent.getStringExtra("EXTRA_VIAJE_MONEDA_DEFECTO")
+
         val tituloFormateado = getString(R.string.titulo_detalle_viaje, nombreViaje)
         binding.textViewNombreViajeDetalle.text = tituloFormateado
 
-        // 1. Actualizamos la creación del adaptador para manejar ambos clics
         adapter = GastosAdapter(
             listaDeGastos,
             onItemClicked = { gasto ->
-                // CLIC CORTO: Si hay foto, la muestra. Si no, no hace nada.
                 if (gasto.urlFotoRecibo.isNotEmpty()) {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(gasto.urlFotoRecibo))
-                    startActivity(intent)
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(gasto.urlFotoRecibo)))
                 }
             },
             onItemLongClicked = { gasto ->
-                // CLIC LARGO: Muestra el menú de acciones.
                 mostrarDialogoDeAcciones(gasto)
             }
         )
@@ -51,7 +50,8 @@ class DetalleViajeActivity : AppCompatActivity() {
 
         binding.fabAgregarGasto.setOnClickListener {
             val intent = Intent(this, NuevoGastoActivity::class.java)
-            intent.putExtra("EXTRA_VIAJE_ID", viajeId)
+            intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_ID, viajeId)
+            intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_MONEDA_DEFECTO, monedaPorDefecto)
             startActivity(intent)
         }
     }
@@ -63,7 +63,6 @@ class DetalleViajeActivity : AppCompatActivity() {
         }
     }
 
-    // 2. Nueva función para el diálogo de acciones del gasto
     private fun mostrarDialogoDeAcciones(gasto: Gasto) {
         val opciones = arrayOf("Ver Recibo", "Editar Gasto", "Eliminar Gasto")
 
@@ -79,9 +78,8 @@ class DetalleViajeActivity : AppCompatActivity() {
                             Toast.makeText(this, "Este gasto no tiene un recibo adjunto", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    1 -> { // El usuario eligió "Editar Gasto"
+                    1 -> { // Editar Gasto
                         val intent = Intent(this, NuevoGastoActivity::class.java)
-                        // Pasamos todos los datos del gasto para la edición
                         intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_ID, viajeId)
                         intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_ID, gasto.id)
                         intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_DESCRIPCION, gasto.descripcion)

@@ -4,7 +4,9 @@ data class Viaje(
     var id: String = "",
     val nombre: String = "",
     val fecha: String = "",
-    // Nuevos campos de configuración
+    // --- Nuevo campo ---
+    val monedaPorDefecto: String = "",
+    // --- Campos de configuración ---
     val nombrePersona: String = "",
     val legajo: String = "",
     val centroCostos: String = ""

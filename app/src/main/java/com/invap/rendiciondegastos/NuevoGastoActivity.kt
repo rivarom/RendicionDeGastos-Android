@@ -1,7 +1,10 @@
 package com.invap.rendiciondegastos
 
 import android.Manifest
+import android.app.Activity
+import android.app.DatePickerDialog
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -20,6 +23,7 @@ import com.google.firebase.storage.ktx.storage
 import com.invap.rendiciondegastos.databinding.ActivityNuevoGastoBinding
 import java.io.File
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
@@ -31,8 +35,6 @@ class NuevoGastoActivity : AppCompatActivity() {
     private val storage = Firebase.storage
     private var viajeId: String? = null
     private var fotoUri: Uri? = null
-
-    // Variable para saber si estamos editando
     private var idGastoAEditar: String? = null
     private var urlFotoExistente: String? = null
 
@@ -47,7 +49,7 @@ class NuevoGastoActivity : AppCompatActivity() {
             if (success) {
                 binding.imageViewFotoRecibo.setImageURI(fotoUri)
                 binding.imageViewFotoRecibo.visibility = View.VISIBLE
-                urlFotoExistente = null // Si se toma una nueva foto, la anterior ya no cuenta
+                urlFotoExistente = null
             }
         }
 
@@ -60,8 +62,15 @@ class NuevoGastoActivity : AppCompatActivity() {
         idGastoAEditar = intent.getStringExtra(EXTRA_GASTO_ID)
 
         cargarOpcionesDesplegables()
+        configurarCampoDeFecha()
 
-        if (idGastoAEditar != null) {
+        // Si es un gasto nuevo, intentamos setear la moneda por defecto del viaje
+        if (idGastoAEditar == null) {
+            val monedaDefecto = intent.getStringExtra(EXTRA_VIAJE_MONEDA_DEFECTO)
+            if (!monedaDefecto.isNullOrEmpty()) {
+                binding.autoCompleteMoneda.setText(monedaDefecto, false)
+            }
+        } else {
             prepararModoEdicion()
         }
 
@@ -77,15 +86,38 @@ class NuevoGastoActivity : AppCompatActivity() {
         }
     }
 
+    private fun configurarCampoDeFecha() {
+        if (idGastoAEditar == null) {
+            val calendario = Calendar.getInstance()
+            val formatoFecha = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+            binding.editTextFechaGasto.setText(formatoFecha.format(calendario.time))
+        }
+        binding.editTextFechaGasto.setOnClickListener {
+            mostrarDatePickerDialog()
+        }
+    }
+
+    private fun mostrarDatePickerDialog() {
+        val calendario = Calendar.getInstance()
+        val anio = calendario.get(Calendar.YEAR)
+        val mes = calendario.get(Calendar.MONTH)
+        val dia = calendario.get(Calendar.DAY_OF_MONTH)
+        val datePickerDialog = DatePickerDialog(this, { _, year, month, dayOfMonth ->
+            val fechaSeleccionada = Calendar.getInstance()
+            fechaSeleccionada.set(year, month, dayOfMonth)
+            val formatoFecha = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+            binding.editTextFechaGasto.setText(formatoFecha.format(fechaSeleccionada.time))
+        }, anio, mes, dia)
+        datePickerDialog.show()
+    }
+
     private fun prepararModoEdicion() {
         binding.buttonGuardarGasto.text = "Actualizar Gasto"
-
         binding.editTextDescripcionGasto.setText(intent.getStringExtra(EXTRA_GASTO_DESCRIPCION))
         binding.editTextMontoGasto.setText(intent.getDoubleExtra(EXTRA_GASTO_MONTO, 0.0).toString())
         binding.editTextFechaGasto.setText(intent.getStringExtra(EXTRA_GASTO_FECHA))
         binding.autoCompleteTipoGasto.setText(intent.getStringExtra(EXTRA_GASTO_TIPO), false)
         binding.autoCompleteMoneda.setText(intent.getStringExtra(EXTRA_GASTO_MONEDA), false)
-
         urlFotoExistente = intent.getStringExtra(EXTRA_GASTO_URL_FOTO)
         if (!urlFotoExistente.isNullOrEmpty()) {
             binding.imageViewFotoRecibo.visibility = View.VISIBLE
@@ -98,7 +130,6 @@ class NuevoGastoActivity : AppCompatActivity() {
         val monedas = sharedPref.getStringSet("MONEDAS", emptySet())?.toList() ?: emptyList()
         val monedasAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, monedas)
         binding.autoCompleteMoneda.setAdapter(monedasAdapter)
-
         val tiposGasto = sharedPref.getStringSet("TIPOS_GASTO", emptySet())?.toList() ?: emptyList()
         val tiposGastoAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, tiposGasto)
         binding.autoCompleteTipoGasto.setAdapter(tiposGastoAdapter)
@@ -124,15 +155,15 @@ class NuevoGastoActivity : AppCompatActivity() {
         val tipoGasto = binding.autoCompleteTipoGasto.text.toString()
         val moneda = binding.autoCompleteMoneda.text.toString()
 
-        if (descripcion.isEmpty() || montoStr.isEmpty() || fecha.isEmpty() || viajeId == null || tipoGasto.isEmpty() || moneda.isEmpty()) {
+        if (montoStr.isEmpty() || fecha.isEmpty() || viajeId == null || tipoGasto.isEmpty() || moneda.isEmpty()) {
             Toast.makeText(this, "Por favor, completa todos los campos", Toast.LENGTH_SHORT).show()
             binding.buttonGuardarGasto.isEnabled = true
             return
         }
 
-        if (fotoUri != null) { // Si se tomó una nueva foto, subirla
+        if (fotoUri != null) {
             subirFotoYGuardarDatos(fotoUri!!, descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda)
-        } else { // Si no se tomó una nueva foto, guardar/actualizar los datos directamente
+        } else {
             guardarDatosEnFirestore(descripcion, montoStr.toDouble(), fecha, viajeId!!, tipoGasto, moneda, urlFotoExistente ?: "")
         }
     }
@@ -174,16 +205,14 @@ class NuevoGastoActivity : AppCompatActivity() {
         )
 
         val task = if (idGastoAEditar == null) {
-            // CREAR: Añade un nuevo documento
             db.collection("gastos").add(gastoMap)
         } else {
-            // ACTUALIZAR: Actualiza el documento existente
             db.collection("gastos").document(idGastoAEditar!!).set(gastoMap)
         }
 
         task.addOnSuccessListener {
             val mensaje = if (idGastoAEditar == null) "Gasto guardado" else "Gasto actualizado"
-            Toast.makeText(this, mensaje, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Gasto guardado", Toast.LENGTH_SHORT).show()
             finish()
         }.addOnFailureListener {
             Toast.makeText(this, "Error al guardar los datos", Toast.LENGTH_SHORT).show()
@@ -193,6 +222,7 @@ class NuevoGastoActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_VIAJE_ID = "EXTRA_VIAJE_ID"
+        const val EXTRA_VIAJE_MONEDA_DEFECTO = "EXTRA_VIAJE_MONEDA_DEFECTO"
         const val EXTRA_GASTO_ID = "EXTRA_GASTO_ID"
         const val EXTRA_GASTO_DESCRIPCION = "EXTRA_GASTO_DESCRIPCION"
         const val EXTRA_GASTO_MONTO = "EXTRA_GASTO_MONTO"

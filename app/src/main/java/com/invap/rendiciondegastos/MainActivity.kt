@@ -31,13 +31,14 @@ class MainActivity : AppCompatActivity() {
             val data: Intent? = result.data
             val nombre = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_NOMBRE)
             val fecha = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA)
+            val monedaDefecto = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_MONEDA_DEFECTO)
             val id = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_ID)
 
-            if (nombre != null && fecha != null) {
+            if (nombre != null && fecha != null && monedaDefecto != null) {
                 if (id == null) {
-                    guardarNuevoViaje(nombre, fecha)
+                    guardarNuevoViaje(nombre, fecha, monedaDefecto)
                 } else {
-                    actualizarViaje(id, nombre, fecha)
+                    actualizarViaje(id, nombre, fecha, monedaDefecto)
                 }
             }
         }
@@ -52,14 +53,14 @@ class MainActivity : AppCompatActivity() {
 
         adapter = ViajesAdapter(
             listaDeViajes,
-            // 1. CLIC CORTO: Ahora va directo a los detalles del viaje (gastos).
             onItemClicked = { viaje: Viaje ->
+                // CLIC CORTO: Va directo a los detalles, pasando la moneda por defecto.
                 val intent = Intent(this, DetalleViajeActivity::class.java)
                 intent.putExtra("EXTRA_VIAJE_ID", viaje.id)
                 intent.putExtra("EXTRA_VIAJE_NOMBRE", viaje.nombre)
+                intent.putExtra("EXTRA_VIAJE_MONEDA_DEFECTO", viaje.monedaPorDefecto)
                 startActivity(intent)
             },
-            // 2. CLIC LARGO: Ahora muestra el nuevo menú de acciones.
             onItemLongClicked = { viaje: Viaje ->
                 mostrarDialogoDeAcciones(viaje)
             }
@@ -74,7 +75,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 3. NUEVO DIÁLOGO DE ACCIONES PARA EL CLIC LARGO
     private fun mostrarDialogoDeAcciones(viaje: Viaje) {
         val opciones = arrayOf("Ver Gastos", "Editar Viaje", "Eliminar Viaje")
 
@@ -86,6 +86,7 @@ class MainActivity : AppCompatActivity() {
                         val intent = Intent(this, DetalleViajeActivity::class.java)
                         intent.putExtra("EXTRA_VIAJE_ID", viaje.id)
                         intent.putExtra("EXTRA_VIAJE_NOMBRE", viaje.nombre)
+                        intent.putExtra("EXTRA_VIAJE_MONEDA_DEFECTO", viaje.monedaPorDefecto)
                         startActivity(intent)
                     }
                     1 -> { // Editar Viaje
@@ -93,6 +94,7 @@ class MainActivity : AppCompatActivity() {
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_ID, viaje.id)
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_NOMBRE, viaje.nombre)
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA, viaje.fecha)
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_MONEDA_DEFECTO, viaje.monedaPorDefecto)
                         nuevoViajeResultLauncher.launch(intent)
                     }
                     2 -> { // Eliminar Viaje
@@ -126,7 +128,7 @@ class MainActivity : AppCompatActivity() {
     private fun mostrarDialogoDeConfirmacion(viaje: Viaje) {
         AlertDialog.Builder(this)
             .setTitle("Confirmar Eliminación")
-            .setMessage("¿Estás seguro de que quieres eliminar el viaje '${viaje.nombre}'? Esta acción no se puede deshacer.")
+            .setMessage("¿Estás seguro de que quieres eliminar el viaje '${viaje.nombre}'?")
             .setPositiveButton("Eliminar") { _, _ ->
                 eliminarViaje(viaje)
             }
@@ -166,7 +168,7 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
-    private fun guardarNuevoViaje(nombre: String, fecha: String) {
+    private fun guardarNuevoViaje(nombre: String, fecha: String, monedaDefecto: String) {
         val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
@@ -175,6 +177,7 @@ class MainActivity : AppCompatActivity() {
         val nuevoViaje = hashMapOf(
             "nombre" to nombre,
             "fecha" to fecha,
+            "monedaPorDefecto" to monedaDefecto,
             "nombrePersona" to nombrePersona,
             "legajo" to legajo,
             "centroCostos" to centroCostos
@@ -190,7 +193,7 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
-    private fun actualizarViaje(id: String, nombre: String, fecha: String) {
+    private fun actualizarViaje(id: String, nombre: String, fecha: String, monedaDefecto: String) {
         val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
@@ -199,6 +202,7 @@ class MainActivity : AppCompatActivity() {
         val viajeActualizado = hashMapOf(
             "nombre" to nombre,
             "fecha" to fecha,
+            "monedaPorDefecto" to monedaDefecto,
             "nombrePersona" to nombrePersona,
             "legajo" to legajo,
             "centroCostos" to centroCostos
