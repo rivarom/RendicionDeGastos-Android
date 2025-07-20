@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.firebase.firestore.ktx.firestore
@@ -16,7 +17,6 @@ class DetalleViajeActivity : AppCompatActivity() {
     private lateinit var binding: ActivityDetalleViajeBinding
     private var viajeId: String? = null
 
-    // 1. Añadimos las variables para la lista y el adaptador de gastos
     private val db = Firebase.firestore
     private val listaDeGastos = mutableListOf<Gasto>()
     private lateinit var adapter: GastosAdapter
@@ -30,8 +30,9 @@ class DetalleViajeActivity : AppCompatActivity() {
         val nombreViaje = intent.getStringExtra("EXTRA_VIAJE_NOMBRE")
         binding.textViewNombreViajeDetalle.text = nombreViaje
 
-        // 2. Configuramos el RecyclerView de gastos
-        adapter = GastosAdapter(listaDeGastos)
+        adapter = GastosAdapter(listaDeGastos) { gasto : Gasto ->
+            mostrarDialogoDeConfirmacion(gasto)
+        }
         binding.recyclerViewGastos.adapter = adapter
         binding.recyclerViewGastos.layoutManager = LinearLayoutManager(this)
 
@@ -44,15 +45,43 @@ class DetalleViajeActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 3. Cargamos los gastos cada vez que la pantalla es visible
         if (viajeId != null) {
             cargarGastos()
         }
     }
 
+    private fun mostrarDialogoDeConfirmacion(gasto: Gasto) {
+        AlertDialog.Builder(this)
+            .setTitle("Confirmar Eliminación")
+            .setMessage("¿Estás seguro de que quieres eliminar el gasto '${gasto.descripcion}'?")
+            .setPositiveButton("Eliminar") { _, _ ->
+                eliminarGasto(gasto)
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun eliminarGasto(gasto: Gasto) {
+        // Asegúrate que el gasto tenga un ID antes de intentar borrarlo.
+        if (gasto.id.isEmpty()) {
+            Toast.makeText(this, "Error: ID del gasto no encontrado", Toast.LENGTH_SHORT).show()
+            return
+        }
+        db.collection("gastos").document(gasto.id)
+            .delete()
+            .addOnSuccessListener {
+                Log.d("DetalleViajeActivity", "Gasto eliminado con éxito")
+                Toast.makeText(this, "Gasto eliminado", Toast.LENGTH_SHORT).show()
+                cargarGastos() // Recargamos la lista
+            }
+            .addOnFailureListener { e ->
+                Log.w("DetalleViajeActivity", "Error al eliminar el gasto", e)
+                Toast.makeText(this, "Error al eliminar el gasto", Toast.LENGTH_SHORT).show()
+            }
+    }
+
     private fun cargarGastos() {
         db.collection("gastos")
-            // 4. Esta es la consulta clave: filtramos por el ID del viaje actual
             .whereEqualTo("viajeId", viajeId)
             .get()
             .addOnSuccessListener { result ->

@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.firebase.firestore.ktx.firestore
@@ -15,7 +16,7 @@ import com.invap.rendiciondegastos.databinding.ActivityMainBinding
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private val listaDeViajes = mutableListOf<Viaje>()
+    private val listaDeViajes: MutableList<Viaje> = mutableListOf()
     private lateinit var adapter: ViajesAdapter
     private val db = Firebase.firestore
 
@@ -38,12 +39,19 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        adapter = ViajesAdapter(listaDeViajes) { viaje ->
-            val intent = Intent(this, DetalleViajeActivity::class.java)
-            intent.putExtra("EXTRA_VIAJE_ID", viaje.id)
-            intent.putExtra("EXTRA_VIAJE_NOMBRE", viaje.nombre)
-            startActivity(intent)
-        }
+        // 1. Actualizamos la creación del adaptador para incluir la nueva función de clic largo
+        adapter = ViajesAdapter(
+            listaDeViajes,
+            onItemClicked = { viaje ->
+                val intent = Intent(this, DetalleViajeActivity::class.java)
+                intent.putExtra("EXTRA_VIAJE_ID", viaje.id)
+                intent.putExtra("EXTRA_VIAJE_NOMBRE", viaje.nombre)
+                startActivity(intent)
+            },
+            onItemLongClicked = { viaje ->
+                mostrarDialogoDeConfirmacion(viaje)
+            }
+        )
 
         binding.recyclerViewViajes.adapter = adapter
         binding.recyclerViewViajes.layoutManager = LinearLayoutManager(this)
@@ -57,6 +65,37 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         cargarViajesDesdeFirestore()
+    }
+
+    // 2. Nueva función para mostrar un diálogo de alerta
+    private fun mostrarDialogoDeConfirmacion(viaje: Viaje) {
+        AlertDialog.Builder(this)
+            .setTitle("Confirmar Eliminación")
+            .setMessage("¿Estás seguro de que quieres eliminar el viaje '${viaje.nombre}'? Esta acción no se puede deshacer.")
+            .setPositiveButton("Eliminar") { _, _ ->
+                eliminarViaje(viaje)
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    // 3. Nueva función para eliminar el viaje de Firestore
+    private fun eliminarViaje(viaje: Viaje) {
+        if (viaje.id.isEmpty()) {
+            Toast.makeText(this, "Error: ID del viaje no encontrado", Toast.LENGTH_SHORT).show()
+            return
+        }
+        db.collection("viajes").document(viaje.id)
+            .delete()
+            .addOnSuccessListener {
+                Log.d("MainActivity", "Viaje eliminado con éxito")
+                Toast.makeText(this, "Viaje eliminado", Toast.LENGTH_SHORT).show()
+                cargarViajesDesdeFirestore() // Recargamos la lista para que desaparezca el elemento
+            }
+            .addOnFailureListener { e ->
+                Log.w("MainActivity", "Error al eliminar el viaje", e)
+                Toast.makeText(this, "Error al eliminar el viaje", Toast.LENGTH_SHORT).show()
+            }
     }
 
     private fun cargarViajesDesdeFirestore() {
@@ -85,8 +124,8 @@ class MainActivity : AppCompatActivity() {
 
         db.collection("viajes")
             .add(nuevoViaje)
-            .addOnSuccessListener {
-                Log.d("MainActivity", "Documento añadido con ID: ${it.id}")
+            .addOnSuccessListener { documentReference ->
+                Log.d("MainActivity", "Documento añadido con ID: ${documentReference.id}")
                 cargarViajesDesdeFirestore()
             }
             .addOnFailureListener { e ->

@@ -12,14 +12,16 @@ import androidx.recyclerview.widget.RecyclerView
 import java.text.NumberFormat
 import java.util.Locale
 
-class GastosAdapter(private val listaDeGastos: List<Gasto>) :
-    RecyclerView.Adapter<GastosAdapter.GastoViewHolder>() {
+// 1. Añadimos el nuevo parámetro para el clic largo
+class GastosAdapter(
+    private val listaDeGastos: List<Gasto>,
+    private val onItemLongClicked: (Gasto) -> Unit
+) : RecyclerView.Adapter<GastosAdapter.GastoViewHolder>() {
 
     inner class GastoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val descripcion: TextView = itemView.findViewById(R.id.textViewDescripcionGasto)
         val fecha: TextView = itemView.findViewById(R.id.textViewFechaGasto)
         val monto: TextView = itemView.findViewById(R.id.textViewMontoGasto)
-        // 1. Añadimos la referencia al nuevo ImageView
         val iconoFoto: ImageView = itemView.findViewById(R.id.iconoFotoRecibo)
     }
 
@@ -37,19 +39,24 @@ class GastosAdapter(private val listaDeGastos: List<Gasto>) :
         val format: NumberFormat = NumberFormat.getCurrencyInstance(Locale("es", "AR"))
         holder.monto.text = format.format(gasto.monto)
 
-        // 2. Lógica para mostrar/ocultar el ícono
         if (gasto.urlFotoRecibo.isNotEmpty()) {
             holder.iconoFoto.visibility = View.VISIBLE
         } else {
             holder.iconoFoto.visibility = View.GONE
         }
 
-        // 3. Lógica para abrir la foto al hacer clic en la fila
+        // Clic normal para ver la foto
         holder.itemView.setOnClickListener {
             if (gasto.urlFotoRecibo.isNotEmpty()) {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(gasto.urlFotoRecibo))
                 holder.itemView.context.startActivity(intent)
             }
+        }
+
+        // 2. Configuración del clic largo para eliminar
+        holder.itemView.setOnLongClickListener {
+            onItemLongClicked(gasto)
+            true
         }
     }
 
