@@ -1,15 +1,8 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.RendicionDeGastos" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+    <style name="Theme.RendicionDeGastos" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/verde_invap</item>
+        <item name="colorPrimaryVariant">@color/verde_invap</item>
+        <item name="colorOnPrimary">@color/white</item>
     </style>
 
-    <style name="Theme.RendicionDeGastos" parent="Base.Theme.RendicionDeGastos" />
-    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/verde_invap</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/invap_logoblanco</item>
-        <item name="postSplashScreenTheme">@style/Theme.RendicionDeGastos</item>
-    </style>
 </resources>

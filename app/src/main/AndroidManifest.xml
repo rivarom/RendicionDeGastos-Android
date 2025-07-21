@@ -4,6 +4,7 @@
     package="com.invap.rendiciondegastos">
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="true"
@@ -27,12 +28,19 @@
 
         <activity
             android:name=".MainActivity"
-            android:theme="@style/Theme.App.Starting" />
-        <activity android:name=".NuevoViajeActivity" />
-        <activity android:name=".DetalleViajeActivity" />
-        <activity android:name=".NuevoGastoActivity" />
-        <activity android:name=".ConfiguracionActivity" />
-
+            android:exported="false" />
+        <activity
+            android:name=".NuevoViajeActivity"
+            android:exported="false" />
+        <activity
+            android:name=".DetalleViajeActivity"
+            android:exported="false" />
+        <activity
+            android:name=".NuevoGastoActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ConfiguracionActivity"
+            android:exported="false" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.invap.rendiciondegastos.fileprovider"
@@ -44,5 +52,4 @@
         </provider>
 
     </application>
-
 </manifest>

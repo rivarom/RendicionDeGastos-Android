@@ -11,11 +11,10 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
-import com.google.firebase.auth.ktx.auth
 import com.invap.rendiciondegastos.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
@@ -46,8 +45,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        // LÓGICA DE DECISIÓN: Se ejecuta ANTES de mostrar la pantalla
+        if (Firebase.auth.currentUser == null) {
+            // Si no hay usuario, vamos al Login y cerramos esta actividad
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return // Importante: 'return' para no seguir ejecutando el código de abajo
+        }
+
+        // Si hay un usuario, continuamos con la carga normal de MainActivity
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
@@ -55,7 +63,6 @@ class MainActivity : AppCompatActivity() {
         adapter = ViajesAdapter(
             listaDeViajes,
             onItemClicked = { viaje: Viaje ->
-                // CLIC CORTO: Va directo a los detalles, pasando la moneda por defecto.
                 val intent = Intent(this, DetalleViajeActivity::class.java)
                 intent.putExtra("EXTRA_VIAJE_ID", viaje.id)
                 intent.putExtra("EXTRA_VIAJE_NOMBRE", viaje.nombre)
@@ -108,7 +115,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        cargarViajesDesdeFirestore()
+        if (Firebase.auth.currentUser != null) {
+            cargarViajesDesdeFirestore()
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -116,21 +125,18 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    // Dentro de MainActivity.kt
-
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_settings -> {
                 startActivity(Intent(this, ConfiguracionActivity::class.java))
                 true
             }
-            // Nuevo caso para manejar el clic en "Cerrar Sesión"
             R.id.action_logout -> {
-                // Llama directamente a Firebase.auth en lugar de a una variable 'auth'
                 Firebase.auth.signOut()
                 val intent = Intent(this, LoginActivity::class.java)
+                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 startActivity(intent)
-                finish() // Cierra MainActivity
+                finish()
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -140,7 +146,7 @@ class MainActivity : AppCompatActivity() {
     private fun mostrarDialogoDeConfirmacion(viaje: Viaje) {
         AlertDialog.Builder(this)
             .setTitle("Confirmar Eliminación")
-            .setMessage("¿Estás seguro de que quieres eliminar el viaje '${viaje.nombre}'?")
+            .setMessage("¿Estás seguro de que quieres eliminar el viaje '${viaje.nombre}'? Esta acción no se puede deshacer.")
             .setPositiveButton("Eliminar") { _, _ ->
                 eliminarViaje(viaje)
             }
@@ -171,9 +177,8 @@ class MainActivity : AppCompatActivity() {
             adapter.notifyDataSetChanged()
             return
         }
-
         db.collection("viajes")
-            .whereEqualTo("userId", userId) // --- LÍNEA CLAVE ---
+            .whereEqualTo("userId", userId)
             .get()
             .addOnSuccessListener { result ->
                 listaDeViajes.clear()
@@ -185,37 +190,26 @@ class MainActivity : AppCompatActivity() {
                 adapter.notifyDataSetChanged()
             }
             .addOnFailureListener { exception ->
-                Log.w("MainActivity", "Error al obtener documentos.", exception)
                 Toast.makeText(this, "Error al cargar los viajes.", Toast.LENGTH_SHORT).show()
             }
     }
 
-// Dentro de MainActivity.kt
-
     private fun guardarNuevoViaje(nombre: String, fecha: String, monedaDefecto: String) {
-        val sharedPref = getSharedPreferences("UserPrefs_${Firebase.auth.currentUser?.uid}", Context.MODE_PRIVATE)
-        val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
-        val legajo = sharedPref.getString("LEGAJO", "") ?: ""
-        val centroCostos = sharedPref.getString("CENTRO_COSTOS", "") ?: ""
-        // 1. Obtenemos el ID del usuario actual
         val userId = Firebase.auth.currentUser?.uid
-
         if (userId == null) {
             Toast.makeText(this, "Error: No se pudo identificar al usuario.", Toast.LENGTH_SHORT).show()
             return
         }
+        val sharedPref = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
+        val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
+        val legajo = sharedPref.getString("LEGAJO", "") ?: ""
+        val centroCostos = sharedPref.getString("CENTRO_COSTOS", "") ?: ""
 
         val nuevoViaje = hashMapOf(
-            "nombre" to nombre,
-            "fecha" to fecha,
-            "monedaPorDefecto" to monedaDefecto,
-            "nombrePersona" to nombrePersona,
-            "legajo" to legajo,
-            "centroCostos" to centroCostos,
-            // 2. Añadimos el ID del usuario al documento
+            "nombre" to nombre, "fecha" to fecha, "monedaPorDefecto" to monedaDefecto,
+            "nombrePersona" to nombrePersona, "legajo" to legajo, "centroCostos" to centroCostos,
             "userId" to userId
         )
-
         db.collection("viajes").add(nuevoViaje)
             .addOnSuccessListener {
                 Toast.makeText(this, "Viaje guardado", Toast.LENGTH_SHORT).show()
@@ -227,29 +221,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun actualizarViaje(id: String, nombre: String, fecha: String, monedaDefecto: String) {
-        val sharedPref = getSharedPreferences("UserPrefs_${Firebase.auth.currentUser?.uid}", Context.MODE_PRIVATE)
-        val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
-        val legajo = sharedPref.getString("LEGAJO", "") ?: ""
-        val centroCostos = sharedPref.getString("CENTRO_COSTOS", "") ?: ""
-        // 1. Obtenemos el ID del usuario actual
         val userId = Firebase.auth.currentUser?.uid
-
         if (userId == null) {
             Toast.makeText(this, "Error: No se pudo identificar al usuario.", Toast.LENGTH_SHORT).show()
             return
         }
+        val sharedPref = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
+        val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
+        val legajo = sharedPref.getString("LEGAJO", "") ?: ""
+        val centroCostos = sharedPref.getString("CENTRO_COSTOS", "") ?: ""
 
         val viajeActualizado = hashMapOf(
-            "nombre" to nombre,
-            "fecha" to fecha,
-            "monedaPorDefecto" to monedaDefecto,
-            "nombrePersona" to nombrePersona,
-            "legajo" to legajo,
-            "centroCostos" to centroCostos,
-            // 2. Nos aseguramos de que el ID del usuario también esté en el documento actualizado
+            "nombre" to nombre, "fecha" to fecha, "monedaPorDefecto" to monedaDefecto,
+            "nombrePersona" to nombrePersona, "legajo" to legajo, "centroCostos" to centroCostos,
             "userId" to userId
         )
-
         db.collection("viajes").document(id).set(viajeActualizado)
             .addOnSuccessListener {
                 Toast.makeText(this, "Viaje actualizado", Toast.LENGTH_SHORT).show()
