@@ -90,7 +90,7 @@ class DetalleViajeActivity : AppCompatActivity() {
                 true
             }
             R.id.action_export_pdf -> {
-                Toast.makeText(this, "Exportando a PDF...", Toast.LENGTH_SHORT).show()
+                exportarRecibosAPDF() // Llamamos a la nueva función
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -212,6 +212,23 @@ class DetalleViajeActivity : AppCompatActivity() {
             .addOnFailureListener { e ->
                 Toast.makeText(this, "Error al eliminar el gasto", Toast.LENGTH_SHORT).show()
             }
+    }
+
+    // Dentro de la clase DetalleViajeActivity
+
+    private fun exportarRecibosAPDF() {
+        val gastosConRecibo = listaDeGastos.filter { it.urlFotoRecibo.isNotEmpty() }
+
+        if (gastosConRecibo.isEmpty()) {
+            Toast.makeText(this, "No hay recibos para exportar", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Mostramos el ProgressBar para indicar que el proceso comenzó
+        // binding.progressBarPDF.visibility = View.VISIBLE
+        Toast.makeText(this, "Iniciando descarga de recibos...", Toast.LENGTH_SHORT).show()
+
+        // La lógica para descargar las imágenes y crear el PDF irá aquí en el siguiente paso
     }
 
     private fun cargarGastos() {
