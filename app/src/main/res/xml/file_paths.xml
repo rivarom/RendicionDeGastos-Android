@@ -3,4 +3,8 @@
     <external-path
         name="my_images"
         path="Android/data/com.invap.rendiciondegastos/files/Pictures" />
+
+    <external-cache-path
+        name="my_cache"
+        path="." />
 </paths>

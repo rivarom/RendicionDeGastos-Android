@@ -9,16 +9,21 @@ import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.invap.rendiciondegastos.databinding.ActivityDetalleViajeBinding
+import java.io.File
+import java.io.FileOutputStream
+
 
 class DetalleViajeActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityDetalleViajeBinding
     private var viajeId: String? = null
+    private var nombreViaje: String? = null
     private var monedaPorDefecto: String? = null
     private var imputacionPtPorDefecto: String? = null
     private var imputacionWpPorDefecto: String? = null
@@ -31,12 +36,10 @@ class DetalleViajeActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityDetalleViajeBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
-        // Le decimos a la actividad que use nuestra nueva Toolbar
         setSupportActionBar(binding.toolbarDetalle)
 
         viajeId = intent.getStringExtra("EXTRA_VIAJE_ID")
-        val nombreViaje = intent.getStringExtra("EXTRA_VIAJE_NOMBRE")
+        nombreViaje = intent.getStringExtra("EXTRA_VIAJE_NOMBRE")
         monedaPorDefecto = intent.getStringExtra("EXTRA_VIAJE_MONEDA_DEFECTO")
         imputacionPtPorDefecto = intent.getStringExtra("EXTRA_VIAJE_IMPUTACION_PT")
         imputacionWpPorDefecto = intent.getStringExtra("EXTRA_VIAJE_IMPUTACION_WP")
@@ -75,7 +78,6 @@ class DetalleViajeActivity : AppCompatActivity() {
         }
     }
 
-    // --- FUNCIONES DEL MENÚ (AHORA DENTRO DE LA CLASE) ---
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.detalle_viaje_menu, menu)
         return true
@@ -84,7 +86,7 @@ class DetalleViajeActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_export_excel -> {
-                Toast.makeText(this, "Exportando a Excel...", Toast.LENGTH_SHORT).show()
+                exportarACSV()
                 true
             }
             R.id.action_export_pdf -> {
@@ -94,7 +96,59 @@ class DetalleViajeActivity : AppCompatActivity() {
             else -> super.onOptionsItemSelected(item)
         }
     }
-    // --- FIN DE FUNCIONES DEL MENÚ ---
+
+    private fun exportarACSV() {
+        if (listaDeGastos.isEmpty()) {
+            Toast.makeText(this, "No hay gastos para exportar", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val csvBuilder = StringBuilder()
+        // Encabezados
+        csvBuilder.append("TAG,Fecha,Descripción,Tipo de Gasto,Forma de Pago,Moneda,Monto,PT,WP,Persona,Legajo,Centro de Costos\n")
+
+        // Datos
+        for (gasto in listaDeGastos) {
+            // Escapar comillas dobles dentro de los campos de texto
+            val descripcionLimpia = gasto.descripcion.replace("\"", "\"\"")
+
+            csvBuilder.append("\"${gasto.tagGasto}\",")
+            csvBuilder.append("\"${gasto.fecha}\",")
+            csvBuilder.append("\"$descripcionLimpia\",")
+            csvBuilder.append("\"${gasto.tipoGasto}\",")
+            csvBuilder.append("\"${gasto.formaDePago}\",")
+            csvBuilder.append("\"${gasto.moneda}\",")
+            csvBuilder.append("${gasto.monto},") // Los números no necesitan comillas
+            csvBuilder.append("\"${gasto.imputacionPT}\",")
+            csvBuilder.append("\"${gasto.imputacionWP}\",")
+            csvBuilder.append("\"${gasto.nombrePersona}\",")
+            csvBuilder.append("\"${gasto.legajo}\",")
+            csvBuilder.append("\"${gasto.centroCostos}\"\n")
+        }
+
+        try {
+            val fileName = "Rendicion_${nombreViaje?.replace(" ", "_")}.csv"
+            val file = File(externalCacheDir, fileName)
+            FileOutputStream(file).use {
+                it.write(csvBuilder.toString().toByteArray())
+            }
+            compartirArchivoCSV(file)
+        } catch (e: Exception) {
+            Log.e("ExportarCSV", "Error al generar el archivo CSV", e)
+            Toast.makeText(this, "Error al generar el archivo CSV", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun compartirArchivoCSV(file: File) {
+        val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "Rendición de Viaje: $nombreViaje")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(shareIntent, "Compartir Rendición CSV"))
+    }
 
     private fun mostrarDialogoDeAcciones(gasto: Gasto) {
         val opciones = arrayOf("Ver Recibo", "Editar Gasto", "Eliminar Gasto")
