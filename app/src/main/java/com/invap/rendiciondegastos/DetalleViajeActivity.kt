@@ -18,6 +18,8 @@ class DetalleViajeActivity : AppCompatActivity() {
     private lateinit var binding: ActivityDetalleViajeBinding
     private var viajeId: String? = null
     private var monedaPorDefecto: String? = null
+    private var imputacionPtPorDefecto: String? = null
+    private var imputacionWpPorDefecto: String? = null
 
     private val db = Firebase.firestore
     private val listaDeGastos = mutableListOf<Gasto>()
@@ -31,6 +33,8 @@ class DetalleViajeActivity : AppCompatActivity() {
         viajeId = intent.getStringExtra("EXTRA_VIAJE_ID")
         val nombreViaje = intent.getStringExtra("EXTRA_VIAJE_NOMBRE")
         monedaPorDefecto = intent.getStringExtra("EXTRA_VIAJE_MONEDA_DEFECTO")
+        imputacionPtPorDefecto = intent.getStringExtra("EXTRA_VIAJE_IMPUTACION_PT")
+        imputacionWpPorDefecto = intent.getStringExtra("EXTRA_VIAJE_IMPUTACION_WP")
 
         val tituloFormateado = getString(R.string.titulo_detalle_viaje, nombreViaje)
         binding.textViewNombreViajeDetalle.text = tituloFormateado
@@ -53,6 +57,8 @@ class DetalleViajeActivity : AppCompatActivity() {
             val intent = Intent(this, NuevoGastoActivity::class.java)
             intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_ID, viajeId)
             intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_MONEDA_DEFECTO, monedaPorDefecto)
+            intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_IMPUTACION_PT, imputacionPtPorDefecto)
+            intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_IMPUTACION_WP, imputacionWpPorDefecto)
             startActivity(intent)
         }
     }
@@ -66,15 +72,13 @@ class DetalleViajeActivity : AppCompatActivity() {
 
     private fun mostrarDialogoDeAcciones(gasto: Gasto) {
         val opciones = arrayOf("Ver Recibo", "Editar Gasto", "Eliminar Gasto")
-
         AlertDialog.Builder(this)
             .setTitle(gasto.descripcion)
             .setItems(opciones) { _, which ->
                 when (which) {
                     0 -> { // Ver Recibo
                         if (gasto.urlFotoRecibo.isNotEmpty()) {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(gasto.urlFotoRecibo))
-                            startActivity(intent)
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(gasto.urlFotoRecibo)))
                         } else {
                             Toast.makeText(this, "Este gasto no tiene un recibo adjunto", Toast.LENGTH_SHORT).show()
                         }
@@ -88,7 +92,11 @@ class DetalleViajeActivity : AppCompatActivity() {
                         intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_FECHA, gasto.fecha)
                         intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_TIPO, gasto.tipoGasto)
                         intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_MONEDA, gasto.moneda)
+                        intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_FORMA_PAGO, gasto.formaDePago)
                         intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_URL_FOTO, gasto.urlFotoRecibo)
+                        intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_TAG, gasto.tagGasto)
+                        intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_IMPUTACION_PT, gasto.imputacionPT)
+                        intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_IMPUTACION_WP, gasto.imputacionWP)
                         startActivity(intent)
                     }
                     2 -> { // Eliminar Gasto
@@ -125,6 +133,7 @@ class DetalleViajeActivity : AppCompatActivity() {
                 Toast.makeText(this, "Error al eliminar el gasto", Toast.LENGTH_SHORT).show()
             }
     }
+
     private fun cargarGastos() {
         val userId = Firebase.auth.currentUser?.uid
         if (userId == null || viajeId == null) return
@@ -135,7 +144,6 @@ class DetalleViajeActivity : AppCompatActivity() {
             .orderBy("timestamp")
             .get()
             .addOnSuccessListener { result ->
-                // CORRECCIÓN: Usamos la variable correcta 'listaDeGastos'
                 listaDeGastos.clear()
                 for (document in result) {
                     val gasto = document.toObject(Gasto::class.java)

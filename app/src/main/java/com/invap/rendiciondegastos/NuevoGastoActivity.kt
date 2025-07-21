@@ -67,10 +67,17 @@ class NuevoGastoActivity : AppCompatActivity() {
         configurarCampoDeFecha()
 
         if (idGastoAEditar == null) {
+            // Establecer valores por defecto para un GASTO NUEVO
             val monedaDefecto = intent.getStringExtra(EXTRA_VIAJE_MONEDA_DEFECTO)
             if (!monedaDefecto.isNullOrEmpty()) {
                 binding.autoCompleteMoneda.setText(monedaDefecto, false)
             }
+            val ptDefecto = intent.getStringExtra(EXTRA_VIAJE_IMPUTACION_PT)
+            val wpDefecto = intent.getStringExtra(EXTRA_VIAJE_IMPUTACION_WP)
+            if (!ptDefecto.isNullOrEmpty() && !wpDefecto.isNullOrEmpty()) {
+                binding.autoCompleteImputacion.setText("PT: $ptDefecto / WP: $wpDefecto", false)
+            }
+
         } else {
             prepararModoEdicion()
         }
@@ -296,6 +303,8 @@ class NuevoGastoActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_VIAJE_ID = "EXTRA_VIAJE_ID"
         const val EXTRA_VIAJE_MONEDA_DEFECTO = "EXTRA_VIAJE_MONEDA_DEFECTO"
+        const val EXTRA_VIAJE_IMPUTACION_PT = "EXTRA_VIAJE_IMPUTACION_PT"
+        const val EXTRA_VIAJE_IMPUTACION_WP = "EXTRA_VIAJE_IMPUTACION_WP"
         const val EXTRA_GASTO_ID = "EXTRA_GASTO_ID"
         const val EXTRA_GASTO_DESCRIPCION = "EXTRA_GASTO_DESCRIPCION"
         const val EXTRA_GASTO_MONTO = "EXTRA_GASTO_MONTO"

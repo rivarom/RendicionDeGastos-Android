@@ -69,6 +69,8 @@ class MainActivity : AppCompatActivity() {
                 intent.putExtra("EXTRA_VIAJE_ID", viaje.id)
                 intent.putExtra("EXTRA_VIAJE_NOMBRE", viaje.nombre)
                 intent.putExtra("EXTRA_VIAJE_MONEDA_DEFECTO", viaje.monedaPorDefecto)
+                intent.putExtra("EXTRA_VIAJE_IMPUTACION_PT", viaje.imputacionPorDefectoPT)
+                intent.putExtra("EXTRA_VIAJE_IMPUTACION_WP", viaje.imputacionPorDefectoWP)
                 startActivity(intent)
             },
             onItemLongClicked = { viaje: Viaje ->
@@ -85,6 +87,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Reemplaza la función mostrarDialogoDeAcciones completa
     private fun mostrarDialogoDeAcciones(viaje: Viaje) {
         val opciones = arrayOf("Ver Gastos", "Editar Viaje", "Eliminar Viaje")
 
@@ -97,6 +100,9 @@ class MainActivity : AppCompatActivity() {
                         intent.putExtra("EXTRA_VIAJE_ID", viaje.id)
                         intent.putExtra("EXTRA_VIAJE_NOMBRE", viaje.nombre)
                         intent.putExtra("EXTRA_VIAJE_MONEDA_DEFECTO", viaje.monedaPorDefecto)
+                        // --- Líneas nuevas ---
+                        intent.putExtra("EXTRA_VIAJE_IMPUTACION_PT", viaje.imputacionPorDefectoPT)
+                        intent.putExtra("EXTRA_VIAJE_IMPUTACION_WP", viaje.imputacionPorDefectoWP)
                         startActivity(intent)
                     }
                     1 -> { // Editar Viaje
@@ -105,7 +111,6 @@ class MainActivity : AppCompatActivity() {
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_NOMBRE, viaje.nombre)
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA, viaje.fecha)
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_MONEDA_DEFECTO, viaje.monedaPorDefecto)
-                        // Enviamos los datos de imputación para la edición
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_PT, viaje.imputacionPorDefectoPT)
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_WP, viaje.imputacionPorDefectoWP)
                         nuevoViajeResultLauncher.launch(intent)
