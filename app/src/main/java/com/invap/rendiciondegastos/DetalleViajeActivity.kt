@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.invap.rendiciondegastos.databinding.ActivityDetalleViajeBinding
@@ -124,13 +125,17 @@ class DetalleViajeActivity : AppCompatActivity() {
                 Toast.makeText(this, "Error al eliminar el gasto", Toast.LENGTH_SHORT).show()
             }
     }
-
     private fun cargarGastos() {
+        val userId = Firebase.auth.currentUser?.uid
+        if (userId == null || viajeId == null) return
+
         db.collection("gastos")
             .whereEqualTo("viajeId", viajeId)
+            .whereEqualTo("userId", userId)
             .orderBy("timestamp")
             .get()
             .addOnSuccessListener { result ->
+                // CORRECCIÓN: Usamos la variable correcta 'listaDeGastos'
                 listaDeGastos.clear()
                 for (document in result) {
                     val gasto = document.toObject(Gasto::class.java)
@@ -140,6 +145,7 @@ class DetalleViajeActivity : AppCompatActivity() {
                 adapter.notifyDataSetChanged()
             }
             .addOnFailureListener { exception ->
+                Log.w("DetalleViajeActivity", "Error al cargar gastos.", exception)
                 Toast.makeText(this, "Error al cargar gastos.", Toast.LENGTH_SHORT).show()
             }
     }

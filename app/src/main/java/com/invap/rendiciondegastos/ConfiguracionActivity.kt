@@ -2,6 +2,7 @@ package com.invap.rendiciondegastos
 
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -13,7 +14,7 @@ class ConfiguracionActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityConfiguracionBinding
 
-    // Listas para los adaptadores
+    // ... (variables de listas y adaptadores sin cambios) ...
     private val monedasList = mutableListOf<String>()
     private lateinit var monedasAdapter: ConfiguracionAdapter
     private val tiposGastoList = mutableListOf<String>()
@@ -31,8 +32,8 @@ class ConfiguracionActivity : AppCompatActivity() {
         setupButtons()
     }
 
+    // ... (setupRecyclerViews y setupButtons sin cambios) ...
     private fun setupRecyclerViews() {
-        // La configuración de los RecyclerViews no cambia
         monedasAdapter = ConfiguracionAdapter(monedasList) { monedaAEliminar ->
             val position = monedasList.indexOf(monedaAEliminar)
             if (position != -1) {
@@ -65,7 +66,6 @@ class ConfiguracionActivity : AppCompatActivity() {
     }
 
     private fun setupButtons() {
-        // La lógica de los botones de "Añadir" no cambia
         binding.buttonAnadirMoneda.setOnClickListener {
             val nuevaMoneda = binding.editTextNuevaMoneda.text.toString().trim()
             if (nuevaMoneda.isNotEmpty() && !monedasList.contains(nuevaMoneda)) {
@@ -110,31 +110,33 @@ class ConfiguracionActivity : AppCompatActivity() {
             return
         }
 
-        // 1. Usamos un solo archivo de preferencias, específico para el usuario
         val userPrefs = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
 
-        // Cargamos los datos personales
         binding.editTextNombrePersona.setText(userPrefs.getString("NOMBRE_PERSONA", ""))
         binding.editTextLegajo.setText(userPrefs.getString("LEGAJO", ""))
         binding.editTextCentroCostos.setText(userPrefs.getString("CENTRO_COSTOS", ""))
 
-        // 2. Definimos los valores por defecto para un usuario nuevo
-        val monedasPorDefecto = setOf("Pesos", "Dólar", "Euro")
+        val monedasPorDefecto = setOf("Pesos", "Dólar")
         val tiposGastoPorDefecto = setOf("Transporte", "Comida", "Alojamiento")
-        val formasPagoPorDefecto = setOf("Tarjeta de Débito Recargable::TD", "Efectivo USD::EFE")
+        val formasPagoPorDefecto = setOf("Tarjeta de Crédito::TC", "Efectivo::EFE")
 
-        // 3. Cargamos las listas. Si no existen, usamos los valores por defecto
         val monedasGuardadas = userPrefs.getStringSet("MONEDAS", monedasPorDefecto)
+        // --- MENSAJE DE DIAGNÓSTICO ---
+        Log.d("ConfigDebug", "Monedas cargadas: $monedasGuardadas")
         monedasList.clear()
         monedasList.addAll(monedasGuardadas ?: monedasPorDefecto)
         monedasAdapter.notifyDataSetChanged()
 
         val tiposGastoGuardados = userPrefs.getStringSet("TIPOS_GASTO", tiposGastoPorDefecto)
+        // --- MENSAJE DE DIAGNÓSTICO ---
+        Log.d("ConfigDebug", "Tipos de Gasto cargados: $tiposGastoGuardados")
         tiposGastoList.clear()
         tiposGastoList.addAll(tiposGastoGuardados ?: tiposGastoPorDefecto)
         tiposGastoAdapter.notifyDataSetChanged()
 
         val formasPagoGuardadas = userPrefs.getStringSet("FORMAS_PAGO", formasPagoPorDefecto)
+        // --- MENSAJE DE DIAGNÓSTICO ---
+        Log.d("ConfigDebug", "Formas de Pago cargadas: $formasPagoGuardadas")
         formasPagoList.clear()
         (formasPagoGuardadas ?: formasPagoPorDefecto).forEach {
             val partes = it.split("::")
@@ -152,17 +154,19 @@ class ConfiguracionActivity : AppCompatActivity() {
             return
         }
 
-        // 1. Usamos un solo archivo de preferencias, específico para el usuario
         val userPrefs = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
         val formasPagoAGuardar = formasPagoList.map { "${it.nombre}::${it.prefijo}" }.toSet()
 
+        // --- MENSAJES DE DIAGNÓSTICO ---
+        Log.d("ConfigDebug", "Guardando Monedas: ${monedasList.toSet()}")
+        Log.d("ConfigDebug", "Guardando Tipos de Gasto: ${tiposGastoList.toSet()}")
+        Log.d("ConfigDebug", "Guardando Formas de Pago: $formasPagoAGuardar")
+
         with(userPrefs.edit()) {
-            // Guardamos los datos personales
             putString("NOMBRE_PERSONA", binding.editTextNombrePersona.text.toString())
             putString("LEGAJO", binding.editTextLegajo.text.toString())
             putString("CENTRO_COSTOS", binding.editTextCentroCostos.text.toString())
 
-            // Guardamos las listas personales del usuario
             putStringSet("MONEDAS", monedasList.toSet())
             putStringSet("TIPOS_GASTO", tiposGastoList.toSet())
             putStringSet("FORMAS_PAGO", formasPagoAGuardar)

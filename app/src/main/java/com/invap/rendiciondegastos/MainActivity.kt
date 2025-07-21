@@ -165,7 +165,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun cargarViajesDesdeFirestore() {
-        db.collection("viajes").get()
+        val userId = Firebase.auth.currentUser?.uid
+        if (userId == null) {
+            listaDeViajes.clear()
+            adapter.notifyDataSetChanged()
+            return
+        }
+
+        db.collection("viajes")
+            .whereEqualTo("userId", userId) // --- LÍNEA CLAVE ---
+            .get()
             .addOnSuccessListener { result ->
                 listaDeViajes.clear()
                 for (document in result) {
@@ -176,15 +185,25 @@ class MainActivity : AppCompatActivity() {
                 adapter.notifyDataSetChanged()
             }
             .addOnFailureListener { exception ->
+                Log.w("MainActivity", "Error al obtener documentos.", exception)
                 Toast.makeText(this, "Error al cargar los viajes.", Toast.LENGTH_SHORT).show()
             }
     }
 
+// Dentro de MainActivity.kt
+
     private fun guardarNuevoViaje(nombre: String, fecha: String, monedaDefecto: String) {
-        val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
+        val sharedPref = getSharedPreferences("UserPrefs_${Firebase.auth.currentUser?.uid}", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
         val centroCostos = sharedPref.getString("CENTRO_COSTOS", "") ?: ""
+        // 1. Obtenemos el ID del usuario actual
+        val userId = Firebase.auth.currentUser?.uid
+
+        if (userId == null) {
+            Toast.makeText(this, "Error: No se pudo identificar al usuario.", Toast.LENGTH_SHORT).show()
+            return
+        }
 
         val nuevoViaje = hashMapOf(
             "nombre" to nombre,
@@ -192,7 +211,9 @@ class MainActivity : AppCompatActivity() {
             "monedaPorDefecto" to monedaDefecto,
             "nombrePersona" to nombrePersona,
             "legajo" to legajo,
-            "centroCostos" to centroCostos
+            "centroCostos" to centroCostos,
+            // 2. Añadimos el ID del usuario al documento
+            "userId" to userId
         )
 
         db.collection("viajes").add(nuevoViaje)
@@ -206,10 +227,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun actualizarViaje(id: String, nombre: String, fecha: String, monedaDefecto: String) {
-        val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
+        val sharedPref = getSharedPreferences("UserPrefs_${Firebase.auth.currentUser?.uid}", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
         val centroCostos = sharedPref.getString("CENTRO_COSTOS", "") ?: ""
+        // 1. Obtenemos el ID del usuario actual
+        val userId = Firebase.auth.currentUser?.uid
+
+        if (userId == null) {
+            Toast.makeText(this, "Error: No se pudo identificar al usuario.", Toast.LENGTH_SHORT).show()
+            return
+        }
 
         val viajeActualizado = hashMapOf(
             "nombre" to nombre,
@@ -217,7 +245,9 @@ class MainActivity : AppCompatActivity() {
             "monedaPorDefecto" to monedaDefecto,
             "nombrePersona" to nombrePersona,
             "legajo" to legajo,
-            "centroCostos" to centroCostos
+            "centroCostos" to centroCostos,
+            // 2. Nos aseguramos de que el ID del usuario también esté en el documento actualizado
+            "userId" to userId
         )
 
         db.collection("viajes").document(id).set(viajeActualizado)

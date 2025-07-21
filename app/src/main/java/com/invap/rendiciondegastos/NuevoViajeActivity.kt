@@ -5,9 +5,12 @@ import android.app.DatePickerDialog
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.ktx.Firebase
 import com.invap.rendiciondegastos.databinding.ActivityNuevoViajeBinding
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -24,7 +27,7 @@ class NuevoViajeActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         cargarOpcionesMoneda()
-        configurarCampoDeFecha() // Nueva función para la fecha
+        configurarCampoDeFecha()
 
         idViajeAEditar = intent.getStringExtra(EXTRA_VIAJE_ID)
         if (idViajeAEditar != null) {
@@ -58,14 +61,11 @@ class NuevoViajeActivity : AppCompatActivity() {
     }
 
     private fun configurarCampoDeFecha() {
-        // Pone la fecha de hoy por defecto si es un viaje nuevo
         if (idViajeAEditar == null) {
             val calendario = Calendar.getInstance()
             val formatoFecha = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
             binding.editTextFechaViaje.setText(formatoFecha.format(calendario.time))
         }
-
-        // Abre el calendario al hacer clic
         binding.editTextFechaViaje.setOnClickListener {
             mostrarDatePickerDialog()
         }
@@ -76,21 +76,30 @@ class NuevoViajeActivity : AppCompatActivity() {
         val anio = calendario.get(Calendar.YEAR)
         val mes = calendario.get(Calendar.MONTH)
         val dia = calendario.get(Calendar.DAY_OF_MONTH)
-
         val datePickerDialog = DatePickerDialog(this, { _, year, month, dayOfMonth ->
             val fechaSeleccionada = Calendar.getInstance()
             fechaSeleccionada.set(year, month, dayOfMonth)
             val formatoFecha = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
             binding.editTextFechaViaje.setText(formatoFecha.format(fechaSeleccionada.time))
         }, anio, mes, dia)
-
         datePickerDialog.show()
     }
 
     private fun cargarOpcionesMoneda() {
-        val sharedPref = getSharedPreferences("RendicionDeGastosPrefs", Context.MODE_PRIVATE)
-        val monedas = sharedPref.getStringSet("MONEDAS", emptySet())?.toList() ?: emptyList()
-        val monedasAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, monedas)
+        val userId = Firebase.auth.currentUser?.uid
+        if (userId == null) {
+            Log.e("ViajeDebug", "Error: No se encontró usuario al cargar opciones de moneda")
+            return
+        }
+
+        val sharedPref = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
+        val monedasPorDefecto = setOf("Pesos", "Dólar")
+        val monedas = sharedPref.getStringSet("MONEDAS", monedasPorDefecto)
+
+        // --- MENSAJE DE DIAGNÓSTICO ---
+        Log.d("ViajeDebug", "Monedas leídas para el desplegable: $monedas")
+
+        val monedasAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, monedas?.toList() ?: monedasPorDefecto.toList())
         binding.autoCompleteMonedaViaje.setAdapter(monedasAdapter)
     }
 
