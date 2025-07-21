@@ -10,8 +10,10 @@ data class Gasto(
     val moneda: String = "",
     val tipoGasto: String = "",
     val formaDePago: String = "",
-    // --- Nuevo campo ---
     val tagGasto: String = "",
+    // --- Nuevos campos ---
+    val imputacionPT: String = "",
+    val imputacionWP: String = "",
     // --- Campos de configuración ---
     val nombrePersona: String = "",
     val legajo: String = "",

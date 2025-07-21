@@ -32,30 +32,32 @@ class MainActivity : AppCompatActivity() {
             val nombre = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_NOMBRE)
             val fecha = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA)
             val monedaDefecto = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_MONEDA_DEFECTO)
+            // Recibimos los nuevos datos de imputación
+            val imputacionPT = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_PT)
+            val imputacionWP = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_WP)
             val id = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_ID)
 
-            if (nombre != null && fecha != null && monedaDefecto != null) {
+            if (nombre != null && fecha != null && monedaDefecto != null && imputacionPT != null && imputacionWP != null) {
                 if (id == null) {
-                    guardarNuevoViaje(nombre, fecha, monedaDefecto)
+                    guardarNuevoViaje(nombre, fecha, monedaDefecto, imputacionPT, imputacionWP)
                 } else {
-                    actualizarViaje(id, nombre, fecha, monedaDefecto)
+                    actualizarViaje(id, nombre, fecha, monedaDefecto, imputacionPT, imputacionWP)
                 }
             }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // La splash screen la manejaremos de otra forma más adelante si es necesario
+        // installSplashScreen()
         super.onCreate(savedInstanceState)
 
-        // LÓGICA DE DECISIÓN: Se ejecuta ANTES de mostrar la pantalla
         if (Firebase.auth.currentUser == null) {
-            // Si no hay usuario, vamos al Login y cerramos esta actividad
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
-            return // Importante: 'return' para no seguir ejecutando el código de abajo
+            return
         }
 
-        // Si hay un usuario, continuamos con la carga normal de MainActivity
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
@@ -103,6 +105,9 @@ class MainActivity : AppCompatActivity() {
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_NOMBRE, viaje.nombre)
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA, viaje.fecha)
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_MONEDA_DEFECTO, viaje.monedaPorDefecto)
+                        // Enviamos los datos de imputación para la edición
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_PT, viaje.imputacionPorDefectoPT)
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_WP, viaje.imputacionPorDefectoWP)
                         nuevoViajeResultLauncher.launch(intent)
                     }
                     2 -> { // Eliminar Viaje
@@ -171,12 +176,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun cargarViajesDesdeFirestore() {
-        val userId = Firebase.auth.currentUser?.uid
-        if (userId == null) {
-            listaDeViajes.clear()
-            adapter.notifyDataSetChanged()
-            return
-        }
+        val userId = Firebase.auth.currentUser?.uid ?: return
         db.collection("viajes")
             .whereEqualTo("userId", userId)
             .get()
@@ -194,12 +194,8 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
-    private fun guardarNuevoViaje(nombre: String, fecha: String, monedaDefecto: String) {
-        val userId = Firebase.auth.currentUser?.uid
-        if (userId == null) {
-            Toast.makeText(this, "Error: No se pudo identificar al usuario.", Toast.LENGTH_SHORT).show()
-            return
-        }
+    private fun guardarNuevoViaje(nombre: String, fecha: String, monedaDefecto: String, imputacionPT: String, imputacionWP: String) {
+        val userId = Firebase.auth.currentUser?.uid ?: return
         val sharedPref = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
@@ -207,6 +203,7 @@ class MainActivity : AppCompatActivity() {
 
         val nuevoViaje = hashMapOf(
             "nombre" to nombre, "fecha" to fecha, "monedaPorDefecto" to monedaDefecto,
+            "imputacionPorDefectoPT" to imputacionPT, "imputacionPorDefectoWP" to imputacionWP,
             "nombrePersona" to nombrePersona, "legajo" to legajo, "centroCostos" to centroCostos,
             "userId" to userId
         )
@@ -220,12 +217,8 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
-    private fun actualizarViaje(id: String, nombre: String, fecha: String, monedaDefecto: String) {
-        val userId = Firebase.auth.currentUser?.uid
-        if (userId == null) {
-            Toast.makeText(this, "Error: No se pudo identificar al usuario.", Toast.LENGTH_SHORT).show()
-            return
-        }
+    private fun actualizarViaje(id: String, nombre: String, fecha: String, monedaDefecto: String, imputacionPT: String, imputacionWP: String) {
+        val userId = Firebase.auth.currentUser?.uid ?: return
         val sharedPref = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
@@ -233,6 +226,7 @@ class MainActivity : AppCompatActivity() {
 
         val viajeActualizado = hashMapOf(
             "nombre" to nombre, "fecha" to fecha, "monedaPorDefecto" to monedaDefecto,
+            "imputacionPorDefectoPT" to imputacionPT, "imputacionPorDefectoWP" to imputacionWP,
             "nombrePersona" to nombrePersona, "legajo" to legajo, "centroCostos" to centroCostos,
             "userId" to userId
         )

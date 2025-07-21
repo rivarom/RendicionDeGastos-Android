@@ -4,5 +4,4 @@
         <item name="colorPrimaryVariant">@color/verde_invap</item>
         <item name="colorOnPrimary">@color/white</item>
     </style>
-
 </resources>
