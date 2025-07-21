@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -29,6 +31,9 @@ class DetalleViajeActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityDetalleViajeBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Le decimos a la actividad que use nuestra nueva Toolbar
+        setSupportActionBar(binding.toolbarDetalle)
 
         viajeId = intent.getStringExtra("EXTRA_VIAJE_ID")
         val nombreViaje = intent.getStringExtra("EXTRA_VIAJE_NOMBRE")
@@ -69,6 +74,27 @@ class DetalleViajeActivity : AppCompatActivity() {
             cargarGastos()
         }
     }
+
+    // --- FUNCIONES DEL MENÚ (AHORA DENTRO DE LA CLASE) ---
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.detalle_viaje_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_export_excel -> {
+                Toast.makeText(this, "Exportando a Excel...", Toast.LENGTH_SHORT).show()
+                true
+            }
+            R.id.action_export_pdf -> {
+                Toast.makeText(this, "Exportando a PDF...", Toast.LENGTH_SHORT).show()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+    // --- FIN DE FUNCIONES DEL MENÚ ---
 
     private fun mostrarDialogoDeAcciones(gasto: Gasto) {
         val opciones = arrayOf("Ver Recibo", "Editar Gasto", "Eliminar Gasto")

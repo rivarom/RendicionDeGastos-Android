@@ -37,17 +37,21 @@ class NuevoGastoActivity : AppCompatActivity() {
     private var idGastoAEditar: String? = null
     private var urlFotoExistente: String? = null
     private val formasPagoList = mutableListOf<FormaDePago>()
-    // Lista para guardar las imputaciones
     private val imputacionesList = mutableListOf<Imputacion>()
 
     private val requestCameraPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-            if (isGranted) { abrirCamara() }
-            else { Toast.makeText(this, "Permiso de cámara necesario", Toast.LENGTH_SHORT).show() }
+            Log.d("CameraDebug", "Respuesta del permiso recibida. ¿Concedido?: $isGranted")
+            if (isGranted) {
+                abrirCamara()
+            } else {
+                Toast.makeText(this, "Permiso de cámara necesario", Toast.LENGTH_SHORT).show()
+            }
         }
 
     private val cameraLauncher =
         registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+            Log.d("CameraDebug", "Respuesta de la cámara recibida. ¿Éxito?: $success")
             if (success) {
                 binding.imageViewFotoRecibo.setImageURI(fotoUri)
                 binding.imageViewFotoRecibo.visibility = View.VISIBLE
@@ -67,7 +71,6 @@ class NuevoGastoActivity : AppCompatActivity() {
         configurarCampoDeFecha()
 
         if (idGastoAEditar == null) {
-            // Establecer valores por defecto para un GASTO NUEVO
             val monedaDefecto = intent.getStringExtra(EXTRA_VIAJE_MONEDA_DEFECTO)
             if (!monedaDefecto.isNullOrEmpty()) {
                 binding.autoCompleteMoneda.setText(monedaDefecto, false)
@@ -77,15 +80,23 @@ class NuevoGastoActivity : AppCompatActivity() {
             if (!ptDefecto.isNullOrEmpty() && !wpDefecto.isNullOrEmpty()) {
                 binding.autoCompleteImputacion.setText("PT: $ptDefecto / WP: $wpDefecto", false)
             }
-
         } else {
             prepararModoEdicion()
         }
 
         binding.buttonTomarFoto.setOnClickListener {
+            Log.d("CameraDebug", "Botón 'Tomar Foto' presionado.")
             when {
-                ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> abrirCamara()
-                else -> requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.CAMERA
+                ) == PackageManager.PERMISSION_GRANTED -> {
+                    Log.d("CameraDebug", "El permiso ya estaba concedido. Abriendo cámara...")
+                    abrirCamara()
+                }
+                else -> {
+                    Log.d("CameraDebug", "Permiso no concedido. Solicitando permiso...")
+                    requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                }
             }
         }
 
@@ -94,6 +105,22 @@ class NuevoGastoActivity : AppCompatActivity() {
         }
     }
 
+    private fun abrirCamara() {
+        Log.d("CameraDebug", "Dentro de abrirCamara()")
+        try {
+            val fotoArchivo = crearArchivoDeImagen()
+            fotoUri = FileProvider.getUriForFile(
+                this, "com.invap.rendiciondegastos.fileprovider", fotoArchivo
+            )
+            Log.d("CameraDebug", "URI creada: $fotoUri. Lanzando cámara...")
+            cameraLauncher.launch(fotoUri)
+        } catch (e: Exception) {
+            Log.e("CameraDebug", "Error al crear URI o lanzar la cámara", e)
+            Toast.makeText(this, "Error al preparar la cámara: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // ... (El resto de tus funciones no necesitan cambios)
     private fun configurarCampoDeFecha() {
         if (idGastoAEditar == null) {
             val calendario = Calendar.getInstance()
@@ -127,7 +154,6 @@ class NuevoGastoActivity : AppCompatActivity() {
         binding.autoCompleteTipoGasto.setText(intent.getStringExtra(EXTRA_GASTO_TIPO), false)
         binding.autoCompleteMoneda.setText(intent.getStringExtra(EXTRA_GASTO_MONEDA), false)
         binding.autoCompleteFormaPago.setText(intent.getStringExtra(EXTRA_GASTO_FORMA_PAGO), false)
-        // Pre-rellena el campo de imputación
         val pt = intent.getStringExtra(EXTRA_GASTO_IMPUTACION_PT)
         val wp = intent.getStringExtra(EXTRA_GASTO_IMPUTACION_WP)
         if (pt != null && wp != null) {
@@ -145,7 +171,6 @@ class NuevoGastoActivity : AppCompatActivity() {
         val userId = Firebase.auth.currentUser?.uid ?: return
         val userPrefs = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
 
-        // Cargar Monedas, Tipos de Gasto y Formas de Pago (sin cambios)
         val monedas = userPrefs.getStringSet("MONEDAS", emptySet())?.toList() ?: emptyList()
         val monedasAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, monedas)
         binding.autoCompleteMoneda.setAdapter(monedasAdapter)
@@ -166,45 +191,33 @@ class NuevoGastoActivity : AppCompatActivity() {
         val formasPagoAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, formasPagoNombres)
         binding.autoCompleteFormaPago.setAdapter(formasPagoAdapter)
 
-        // Cargar y configurar Imputaciones
         val imputacionesGuardadas = userPrefs.getStringSet("IMPUTACIONES", emptySet())
         imputacionesList.clear()
-        imputacionesGuardadas?.forEach {
+        (imputacionesGuardadas ?: emptySet()).forEach {
             val partes = it.split("::")
             if (partes.size == 2) {
                 imputacionesList.add(Imputacion(partes[0], partes[1]))
             }
         }
-        // Creamos una lista de textos formateados para mostrar en el desplegable
         val imputacionesFormateadas = imputacionesList.map { "PT: ${it.pt} / WP: ${it.wp}" }
         val imputacionesAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, imputacionesFormateadas)
         binding.autoCompleteImputacion.setAdapter(imputacionesAdapter)
     }
 
-    private fun abrirCamara() {
-        // ... (sin cambios)
-    }
-
     private fun crearArchivoDeImagen(): File {
         val timeStamp: String = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val storageDir: File? = getExternalFilesDir("Pictures")
-        return File.createTempFile(
-            "JPEG_${timeStamp}_",
-            ".jpg",
-            storageDir
-        )
+        return File.createTempFile("JPEG_${timeStamp}_", ".jpg", storageDir)
     }
 
     private fun guardarGasto() {
         binding.buttonGuardarGasto.isEnabled = false
-        // ... (lectura de campos existentes sin cambios) ...
         val descripcion = binding.editTextDescripcionGasto.text.toString().trim()
         val montoStr = binding.editTextMontoGasto.text.toString().trim()
         val fecha = binding.editTextFechaGasto.text.toString().trim()
         val tipoGasto = binding.autoCompleteTipoGasto.text.toString()
         val moneda = binding.autoCompleteMoneda.text.toString()
         val formaDePagoNombre = binding.autoCompleteFormaPago.text.toString()
-        // Leemos la selección del nuevo campo
         val imputacionSeleccionadaStr = binding.autoCompleteImputacion.text.toString()
 
         if (montoStr.isEmpty() || fecha.isEmpty() || viajeId == null || tipoGasto.isEmpty() || moneda.isEmpty() || formaDePagoNombre.isEmpty() || imputacionSeleccionadaStr.isEmpty()) {
@@ -213,11 +226,8 @@ class NuevoGastoActivity : AppCompatActivity() {
             return
         }
 
-        // ... (lógica para encontrar el prefijo sin cambios) ...
         val formaDePagoSeleccionada = formasPagoList.find { it.nombre == formaDePagoNombre }!!
         val prefijo = formaDePagoSeleccionada.prefijo
-
-        // Buscamos el objeto Imputacion correspondiente a la selección
         val imputacionSeleccionada = imputacionesList.find { "PT: ${it.pt} / WP: ${it.wp}" == imputacionSeleccionadaStr }!!
 
         if (idGastoAEditar != null) {
@@ -251,7 +261,6 @@ class NuevoGastoActivity : AppCompatActivity() {
     }
 
     private fun subirFotoYGuardarDatos(uri: Uri, descripcion: String, monto: Double, fecha: String, viajeId: String, tipoGasto: String, moneda: String, formaDePago: String, imputacion: Imputacion, tag: String) {
-        // ... (sin cambios, solo pasa 'imputacion' a la siguiente función) ...
         val fotoRef = storage.reference.child("recibos/${UUID.randomUUID()}.jpg")
         Toast.makeText(this, "Subiendo foto...", Toast.LENGTH_SHORT).show()
         fotoRef.putFile(uri)
