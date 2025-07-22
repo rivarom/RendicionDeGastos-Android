@@ -128,28 +128,56 @@ class DetalleViajeActivity : AppCompatActivity() {
         val file = File(externalCacheDir, fileName)
 
         try {
+            // Obtenemos las configuraciones del usuario
+            val userId = Firebase.auth.currentUser?.uid ?: return
+            val userPrefs = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
+            val tiposDeGastoConfigurados = userPrefs.getStringSet("TIPOS_GASTO", emptySet())?.toList()?.sorted() ?: emptyList()
+
+            // Agrupamos los gastos
+            val gastosAgrupados = listaDeGastos.groupBy { "${it.formaDePago}_${it.moneda}" }
+
             val workbook: WritableWorkbook = Workbook.createWorkbook(file)
-            val sheet = workbook.createSheet("Rendición - $nombreViaje", 0)
 
-            val headers = listOf("TAG", "Fecha", "Descripción", "Tipo de Gasto", "Forma de Pago", "Moneda", "Monto", "PT", "WP", "Persona", "Legajo", "Centro de Costos")
-            headers.forEachIndexed { index, header ->
-                sheet.addCell(Label(index, 0, header))
-            }
+            gastosAgrupados.forEach { (grupo, gastosDelGrupo) ->
+                val nombreHoja = grupo.replace(" ", "").replace("/", "").take(30)
+                val sheet = workbook.createSheet(nombreHoja, workbook.numberOfSheets)
 
-            listaDeGastos.forEachIndexed { rowIndex, gasto ->
-                val row = rowIndex + 1
-                sheet.addCell(Label(0, row, gasto.tagGasto))
-                sheet.addCell(Label(1, row, gasto.fecha))
-                sheet.addCell(Label(2, row, gasto.descripcion))
-                sheet.addCell(Label(3, row, gasto.tipoGasto))
-                sheet.addCell(Label(4, row, gasto.formaDePago))
-                sheet.addCell(Label(5, row, gasto.moneda))
-                sheet.addCell(Number(6, row, gasto.monto))
-                sheet.addCell(Label(7, row, gasto.imputacionPT))
-                sheet.addCell(Label(8, row, gasto.imputacionWP))
-                sheet.addCell(Label(9, row, gasto.nombrePersona))
-                sheet.addCell(Label(10, row, gasto.legajo))
-                sheet.addCell(Label(11, row, gasto.centroCostos))
+                // Encabezados
+                val headers = mutableListOf("Comprobante")
+                headers.addAll(tiposDeGastoConfigurados)
+                headers.addAll(listOf("Total Fila", "CC", "PT", "WP"))
+                headers.forEachIndexed { index, header ->
+                    sheet.addCell(Label(index, 0, header))
+                }
+
+                val totalesPorColumna = DoubleArray(tiposDeGastoConfigurados.size) { 0.0 }
+
+                // Datos
+                gastosDelGrupo.forEachIndexed { rowIndex, gasto ->
+                    val row = rowIndex + 1
+                    sheet.addCell(Label(0, row, gasto.tagGasto))
+
+                    val columnaGastoIndex = tiposDeGastoConfigurados.indexOf(gasto.tipoGasto)
+                    if (columnaGastoIndex != -1) {
+                        sheet.addCell(Number(columnaGastoIndex + 1, row, gasto.monto))
+                        totalesPorColumna[columnaGastoIndex] += gasto.monto
+                    }
+
+                    sheet.addCell(Number(headers.indexOf("Total Fila"), row, gasto.monto))
+                    sheet.addCell(Label(headers.indexOf("CC"), row, gasto.centroCostos))
+                    sheet.addCell(Label(headers.indexOf("PT"), row, gasto.imputacionPT))
+                    sheet.addCell(Label(headers.indexOf("WP"), row, gasto.imputacionWP))
+                }
+
+                // Fila de Totales
+                val totalRowIndex = gastosDelGrupo.size + 1
+                sheet.addCell(Label(0, totalRowIndex, "TOTALES"))
+                var totalGeneral = 0.0
+                totalesPorColumna.forEachIndexed { index, total ->
+                    sheet.addCell(Number(index + 1, totalRowIndex, total))
+                    totalGeneral += total
+                }
+                sheet.addCell(Number(headers.indexOf("Total Fila"), totalRowIndex, totalGeneral))
             }
 
             workbook.write()
@@ -158,7 +186,7 @@ class DetalleViajeActivity : AppCompatActivity() {
 
         } catch (e: Exception) {
             Log.e("ExportarExcel", "Error al generar el archivo Excel", e)
-            Toast.makeText(this, "Error al generar el archivo Excel", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Error al generar el archivo Excel: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
