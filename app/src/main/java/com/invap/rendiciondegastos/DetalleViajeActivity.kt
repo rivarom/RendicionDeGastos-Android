@@ -1,23 +1,40 @@
 package com.invap.rendiciondegastos
 
+import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Bundle
+import android.text.StaticLayout
+import android.text.TextPaint
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.bumptech.glide.Glide
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.invap.rendiciondegastos.databinding.ActivityDetalleViajeBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-
+import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class DetalleViajeActivity : AppCompatActivity() {
 
@@ -90,7 +107,7 @@ class DetalleViajeActivity : AppCompatActivity() {
                 true
             }
             R.id.action_export_pdf -> {
-                exportarRecibosAPDF() // Llamamos a la nueva función
+                exportarRecibosAPDF()
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -102,30 +119,23 @@ class DetalleViajeActivity : AppCompatActivity() {
             Toast.makeText(this, "No hay gastos para exportar", Toast.LENGTH_SHORT).show()
             return
         }
-
         val csvBuilder = StringBuilder()
-        // Encabezados
         csvBuilder.append("TAG,Fecha,Descripción,Tipo de Gasto,Forma de Pago,Moneda,Monto,PT,WP,Persona,Legajo,Centro de Costos\n")
-
-        // Datos
         for (gasto in listaDeGastos) {
-            // Escapar comillas dobles dentro de los campos de texto
             val descripcionLimpia = gasto.descripcion.replace("\"", "\"\"")
-
             csvBuilder.append("\"${gasto.tagGasto}\",")
             csvBuilder.append("\"${gasto.fecha}\",")
             csvBuilder.append("\"$descripcionLimpia\",")
             csvBuilder.append("\"${gasto.tipoGasto}\",")
             csvBuilder.append("\"${gasto.formaDePago}\",")
             csvBuilder.append("\"${gasto.moneda}\",")
-            csvBuilder.append("${gasto.monto},") // Los números no necesitan comillas
+            csvBuilder.append("${gasto.monto},")
             csvBuilder.append("\"${gasto.imputacionPT}\",")
             csvBuilder.append("\"${gasto.imputacionWP}\",")
             csvBuilder.append("\"${gasto.nombrePersona}\",")
             csvBuilder.append("\"${gasto.legajo}\",")
             csvBuilder.append("\"${gasto.centroCostos}\"\n")
         }
-
         try {
             val fileName = "Rendicion_${nombreViaje?.replace(" ", "_")}.csv"
             val file = File(externalCacheDir, fileName)
@@ -150,20 +160,159 @@ class DetalleViajeActivity : AppCompatActivity() {
         startActivity(Intent.createChooser(shareIntent, "Compartir Rendición CSV"))
     }
 
+    private fun exportarRecibosAPDF() {
+        if (listaDeGastos.isEmpty()) {
+            Toast.makeText(this, "No hay gastos para exportar", Toast.LENGTH_SHORT).show()
+            return
+        }
+        binding.progressBarPDF.visibility = View.VISIBLE
+        Toast.makeText(this, "Preparando PDF...", Toast.LENGTH_SHORT).show()
+
+        val gastosOrdenados = listaDeGastos.sortedBy { it.formaDePago }
+        val gastosConReciboUrl = gastosOrdenados.filter { it.urlFotoRecibo.isNotEmpty() }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val bitmapsDescargados = mutableMapOf<Gasto, Bitmap>()
+                for (gasto in gastosConReciboUrl) {
+                    val bitmap = Glide.with(this@DetalleViajeActivity).asBitmap().load(gasto.urlFotoRecibo).submit().get()
+                    bitmapsDescargados[gasto] = bitmap
+                }
+                withContext(Dispatchers.Main) {
+                    crearDocumentoPDF(gastosOrdenados, bitmapsDescargados)
+                }
+            } catch (e: Exception) {
+                Log.e("ExportarPDF", "Error al descargar imágenes", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@DetalleViajeActivity, "Error al descargar recibos", Toast.LENGTH_LONG).show()
+                    binding.progressBarPDF.visibility = View.GONE
+                }
+            }
+        }
+    }
+
+    private fun crearDocumentoPDF(gastos: List<Gasto>, bitmaps: Map<Gasto, Bitmap>) {
+        val pdfDocument = PdfDocument()
+        val pageWidth = 842
+        val pageHeight = 595
+        val margin = 40f
+        val recibosPorPagina = 3
+        val espacioEntreRecibos = 20f
+
+        val anchoContenido = pageWidth - 2 * margin
+        val anchoRecibo = (anchoContenido - (recibosPorPagina - 1) * espacioEntreRecibos) / recibosPorPagina
+        val altoRecibo = pageHeight - 2 * margin - 60f
+
+        val paintTag = TextPaint().apply {
+            color = android.graphics.Color.BLACK; textSize = 30f; isFakeBoldText = true
+        }
+        val paintTextoGasto = TextPaint().apply {
+            color = android.graphics.Color.DKGRAY; textSize = 20f
+        }
+        val paintSello = Paint().apply {
+            color = android.graphics.Color.RED; style = Paint.Style.STROKE; strokeWidth = 2f
+        }
+        val paintTextoSello = Paint().apply {
+            color = android.graphics.Color.RED; textSize = 24f; isFakeBoldText = true; textAlign = Paint.Align.CENTER
+        }
+
+        val totalGastos = gastos.size
+        var gastoIndex = 0
+
+        while (gastoIndex < totalGastos) {
+            val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, (gastoIndex / recibosPorPagina) + 1).create()
+            val page = pdfDocument.startPage(pageInfo)
+            val canvas = page.canvas
+
+            for (i in 0 until recibosPorPagina) {
+                if (gastoIndex >= totalGastos) break
+                val gasto = gastos[gastoIndex]
+                val xOffset = margin + i * (anchoRecibo + espacioEntreRecibos)
+                val yPosTag = margin + 30f
+                canvas.drawText(gasto.tagGasto, xOffset, yPosTag, paintTag)
+
+                val bitmap = bitmaps[gasto]
+                if (bitmap != null) {
+                    val scale = anchoRecibo / bitmap.width.toFloat()
+                    val nuevoAlto = bitmap.height * scale
+                    val scaledBitmap = Bitmap.createScaledBitmap(bitmap, anchoRecibo.toInt(), nuevoAlto.toInt(), true)
+                    canvas.drawBitmap(scaledBitmap, xOffset, yPosTag + 10f, null)
+                } else {
+                    val textoSinRecibo = "${gasto.descripcion}\n${gasto.formaDePago}\n${gasto.fecha}\n${NumberFormat.getCurrencyInstance(Locale("es", "AR")).format(gasto.monto)} (${gasto.moneda})"
+                    val textLayout = StaticLayout.Builder.obtain(textoSinRecibo, 0, textoSinRecibo.length, paintTextoGasto, anchoRecibo.toInt()).build()
+                    canvas.save()
+                    canvas.translate(xOffset, yPosTag + 60f)
+                    textLayout.draw(canvas)
+                    canvas.restore()
+                    val rectSello = RectF(xOffset + 20, yPosTag + altoRecibo - 80f, xOffset + anchoRecibo - 20, yPosTag + altoRecibo - 30f)
+                    canvas.drawRoundRect(rectSello, 10f, 10f, paintSello)
+                    canvas.drawText("SIN RECIBO", rectSello.centerX(), rectSello.centerY() + 8, paintTextoSello)
+                }
+                gastoIndex++
+            }
+            dibujarPieDePagina(page, (gastoIndex - 1) / recibosPorPagina + 1, (totalGastos + recibosPorPagina - 1) / recibosPorPagina)
+            pdfDocument.finishPage(page)
+        }
+        try {
+            val fileName = "Recibos_${nombreViaje?.replace(" ", "_")}.pdf"
+            val file = File(externalCacheDir, fileName)
+            FileOutputStream(file).use { pdfDocument.writeTo(it) }
+            pdfDocument.close()
+            compartirArchivoPDF(file)
+        } catch (e: Exception) {
+            Log.e("ExportarPDF", "Error al guardar el PDF", e)
+            Toast.makeText(this, "Error al guardar el PDF", Toast.LENGTH_LONG).show()
+        } finally {
+            binding.progressBarPDF.visibility = View.GONE
+        }
+    }
+
+    private fun dibujarPieDePagina(page: PdfDocument.Page, paginaActual: Int, totalPaginas: Int) {
+        val canvas = page.canvas
+        val paint = Paint().apply {
+            color = android.graphics.Color.GRAY
+            textSize = 10f
+        }
+
+        // NUEVA LÓGICA: Obtenemos los datos del primer gasto de la lista
+        val primerGasto = listaDeGastos.firstOrNull()
+        val nombrePersona = primerGasto?.nombrePersona ?: ""
+        val legajo = primerGasto?.legajo ?: ""
+
+        val fechaCreacion = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
+        val textoPie = "$nombrePersona (Legajo: $legajo) | Viaje: $nombreViaje | Creado: $fechaCreacion"
+        val textoPagina = "Página $paginaActual de $totalPaginas"
+
+        canvas.drawText(textoPie, 40f, page.info.pageHeight - 20f, paint)
+        paint.textAlign = Paint.Align.RIGHT
+        canvas.drawText(textoPagina, page.info.pageWidth - 40f, page.info.pageHeight - 20f, paint)
+    }
+
+    private fun compartirArchivoPDF(file: File) {
+        val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "Recibos del Viaje: $nombreViaje")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(shareIntent, "Compartir Recibos en PDF"))
+    }
+
     private fun mostrarDialogoDeAcciones(gasto: Gasto) {
         val opciones = arrayOf("Ver Recibo", "Editar Gasto", "Eliminar Gasto")
         AlertDialog.Builder(this)
             .setTitle(gasto.descripcion)
             .setItems(opciones) { _, which ->
                 when (which) {
-                    0 -> { // Ver Recibo
+                    0 -> {
                         if (gasto.urlFotoRecibo.isNotEmpty()) {
                             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(gasto.urlFotoRecibo)))
                         } else {
                             Toast.makeText(this, "Este gasto no tiene un recibo adjunto", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    1 -> { // Editar Gasto
+                    1 -> {
                         val intent = Intent(this, NuevoGastoActivity::class.java)
                         intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_ID, viajeId)
                         intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_ID, gasto.id)
@@ -179,7 +328,7 @@ class DetalleViajeActivity : AppCompatActivity() {
                         intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_IMPUTACION_WP, gasto.imputacionWP)
                         startActivity(intent)
                     }
-                    2 -> { // Eliminar Gasto
+                    2 -> {
                         mostrarDialogoDeConfirmacion(gasto)
                     }
                 }
@@ -214,27 +363,9 @@ class DetalleViajeActivity : AppCompatActivity() {
             }
     }
 
-    // Dentro de la clase DetalleViajeActivity
-
-    private fun exportarRecibosAPDF() {
-        val gastosConRecibo = listaDeGastos.filter { it.urlFotoRecibo.isNotEmpty() }
-
-        if (gastosConRecibo.isEmpty()) {
-            Toast.makeText(this, "No hay recibos para exportar", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // Mostramos el ProgressBar para indicar que el proceso comenzó
-        // binding.progressBarPDF.visibility = View.VISIBLE
-        Toast.makeText(this, "Iniciando descarga de recibos...", Toast.LENGTH_SHORT).show()
-
-        // La lógica para descargar las imágenes y crear el PDF irá aquí en el siguiente paso
-    }
-
     private fun cargarGastos() {
         val userId = Firebase.auth.currentUser?.uid
         if (userId == null || viajeId == null) return
-
         db.collection("gastos")
             .whereEqualTo("viajeId", viajeId)
             .whereEqualTo("userId", userId)
