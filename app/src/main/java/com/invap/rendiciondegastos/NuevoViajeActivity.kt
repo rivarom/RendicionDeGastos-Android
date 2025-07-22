@@ -5,6 +5,8 @@ import android.app.DatePickerDialog
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -28,6 +30,7 @@ class NuevoViajeActivity : AppCompatActivity() {
 
         cargarOpciones()
         configurarCampoDeFecha()
+        configurarValidacionEnTiempoReal() // 1. Nueva función para validación
 
         idViajeAEditar = intent.getStringExtra(EXTRA_VIAJE_ID)
         if (idViajeAEditar != null) {
@@ -41,36 +44,74 @@ class NuevoViajeActivity : AppCompatActivity() {
                 binding.autoCompleteImputacionViaje.setText("PT: $pt / WP: $wp", false)
             }
             binding.buttonGuardar.text = "Actualizar Viaje"
+        } else {
+            // Sugerencia para el nombre del viaje
+            binding.editTextNombreViaje.hint = "Nombre del viaje (ej: Destino, Mes)"
         }
 
         binding.buttonGuardar.setOnClickListener {
-            val nombreViaje = binding.editTextNombreViaje.text.toString()
-            val fechaViaje = binding.editTextFechaViaje.text.toString()
-            val monedaDefecto = binding.autoCompleteMonedaViaje.text.toString()
-            val imputacionSeleccionadaStr = binding.autoCompleteImputacionViaje.text.toString()
-
-            if (nombreViaje.isNotEmpty() && fechaViaje.isNotEmpty() && monedaDefecto.isNotEmpty() && imputacionSeleccionadaStr.isNotEmpty()) {
-                val imputacionSeleccionada = imputacionesList.find { "PT: ${it.pt} / WP: ${it.wp}" == imputacionSeleccionadaStr }
-
-                if (imputacionSeleccionada != null) {
-                    val dataIntent = Intent()
-                    dataIntent.putExtra(EXTRA_VIAJE_NOMBRE, nombreViaje)
-                    dataIntent.putExtra(EXTRA_VIAJE_FECHA, fechaViaje)
-                    dataIntent.putExtra(EXTRA_VIAJE_MONEDA_DEFECTO, monedaDefecto)
-                    dataIntent.putExtra(EXTRA_VIAJE_IMPUTACION_PT, imputacionSeleccionada.pt)
-                    dataIntent.putExtra(EXTRA_VIAJE_IMPUTACION_WP, imputacionSeleccionada.wp)
-
-                    if (idViajeAEditar != null) {
-                        dataIntent.putExtra(EXTRA_VIAJE_ID, idViajeAEditar)
-                    }
-                    setResult(Activity.RESULT_OK, dataIntent)
-                    finish()
-                } else {
-                    Toast.makeText(this, "Por favor, selecciona una imputación válida", Toast.LENGTH_SHORT).show()
-                }
+            if (validarCampos()) {
+                guardarViaje()
             } else {
                 Toast.makeText(this, "Por favor, completa todos los campos", Toast.LENGTH_SHORT).show()
             }
+        }
+
+        validarCampos() // Llamada inicial para establecer el estado del botón
+    }
+
+    private fun configurarValidacionEnTiempoReal() {
+        val textWatcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                validarCampos()
+            }
+        }
+
+        binding.editTextNombreViaje.addTextChangedListener(textWatcher)
+        binding.autoCompleteImputacionViaje.addTextChangedListener(textWatcher)
+        binding.autoCompleteMonedaViaje.addTextChangedListener(textWatcher)
+    }
+
+    private fun validarCampos(): Boolean {
+        val nombreValido = !(binding.editTextNombreViaje.text?.toString().isNullOrEmpty())
+        binding.editTextNombreViaje.error = if (nombreValido) null else "Campo obligatorio"
+
+        val imputacionValida = !(binding.autoCompleteImputacionViaje.text?.toString().isNullOrEmpty())
+        binding.autoCompleteImputacionViaje.error = if (imputacionValida) null else "Campo obligatorio"
+
+        val monedaValida = !(binding.autoCompleteMonedaViaje.text?.toString().isNullOrEmpty())
+        binding.autoCompleteMonedaViaje.error = if (monedaValida) null else "Campo obligatorio"
+
+        val esValido = nombreValido && imputacionValida && monedaValida
+        binding.buttonGuardar.isEnabled = esValido
+        return esValido
+    }
+
+    private fun guardarViaje() {
+        val nombreViaje = binding.editTextNombreViaje.text.toString()
+        val fechaViaje = binding.editTextFechaViaje.text.toString()
+        val monedaDefecto = binding.autoCompleteMonedaViaje.text.toString()
+        val imputacionSeleccionadaStr = binding.autoCompleteImputacionViaje.text.toString()
+
+        val imputacionSeleccionada = imputacionesList.find { "PT: ${it.pt} / WP: ${it.wp}" == imputacionSeleccionadaStr }
+
+        if (imputacionSeleccionada != null) {
+            val dataIntent = Intent()
+            dataIntent.putExtra(EXTRA_VIAJE_NOMBRE, nombreViaje)
+            dataIntent.putExtra(EXTRA_VIAJE_FECHA, fechaViaje)
+            dataIntent.putExtra(EXTRA_VIAJE_MONEDA_DEFECTO, monedaDefecto)
+            dataIntent.putExtra(EXTRA_VIAJE_IMPUTACION_PT, imputacionSeleccionada.pt)
+            dataIntent.putExtra(EXTRA_VIAJE_IMPUTACION_WP, imputacionSeleccionada.wp)
+
+            if (idViajeAEditar != null) {
+                dataIntent.putExtra(EXTRA_VIAJE_ID, idViajeAEditar)
+            }
+            setResult(Activity.RESULT_OK, dataIntent)
+            finish()
+        } else {
+            Toast.makeText(this, "Por favor, selecciona una imputación válida", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -103,12 +144,10 @@ class NuevoViajeActivity : AppCompatActivity() {
         val userId = Firebase.auth.currentUser?.uid ?: return
         val userPrefs = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
 
-        // Cargar monedas
         val monedas = userPrefs.getStringSet("MONEDAS", emptySet())?.toList() ?: emptyList()
         val monedasAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, monedas)
         binding.autoCompleteMonedaViaje.setAdapter(monedasAdapter)
 
-        // Cargar Imputaciones
         val imputacionesGuardadas = userPrefs.getStringSet("IMPUTACIONES", emptySet())
         imputacionesList.clear()
         (imputacionesGuardadas ?: emptySet()).forEach {
