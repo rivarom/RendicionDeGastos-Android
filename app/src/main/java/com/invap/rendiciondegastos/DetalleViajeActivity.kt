@@ -26,6 +26,10 @@ import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.invap.rendiciondegastos.databinding.ActivityDetalleViajeBinding
+import jxl.Workbook
+import jxl.write.Label
+import jxl.write.Number
+import jxl.write.WritableWorkbook
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -103,7 +107,7 @@ class DetalleViajeActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_export_excel -> {
-                exportarACSV()
+                exportarAExcel()
                 true
             }
             R.id.action_export_pdf -> {
@@ -114,50 +118,53 @@ class DetalleViajeActivity : AppCompatActivity() {
         }
     }
 
-    private fun exportarACSV() {
+    private fun exportarAExcel() {
         if (listaDeGastos.isEmpty()) {
             Toast.makeText(this, "No hay gastos para exportar", Toast.LENGTH_SHORT).show()
             return
         }
-        val csvBuilder = StringBuilder()
-        csvBuilder.append("TAG,Fecha,Descripción,Tipo de Gasto,Forma de Pago,Moneda,Monto,PT,WP,Persona,Legajo,Centro de Costos\n")
-        for (gasto in listaDeGastos) {
-            val descripcionLimpia = gasto.descripcion.replace("\"", "\"\"")
-            csvBuilder.append("\"${gasto.tagGasto}\",")
-            csvBuilder.append("\"${gasto.fecha}\",")
-            csvBuilder.append("\"$descripcionLimpia\",")
-            csvBuilder.append("\"${gasto.tipoGasto}\",")
-            csvBuilder.append("\"${gasto.formaDePago}\",")
-            csvBuilder.append("\"${gasto.moneda}\",")
-            csvBuilder.append("${gasto.monto},")
-            csvBuilder.append("\"${gasto.imputacionPT}\",")
-            csvBuilder.append("\"${gasto.imputacionWP}\",")
-            csvBuilder.append("\"${gasto.nombrePersona}\",")
-            csvBuilder.append("\"${gasto.legajo}\",")
-            csvBuilder.append("\"${gasto.centroCostos}\"\n")
-        }
+        val fileName = "Rendicion_${nombreViaje?.replace(" ", "_")}.xls"
+        val file = File(externalCacheDir, fileName)
         try {
-            val fileName = "Rendicion_${nombreViaje?.replace(" ", "_")}.csv"
-            val file = File(externalCacheDir, fileName)
-            FileOutputStream(file).use {
-                it.write(csvBuilder.toString().toByteArray())
+            val workbook: WritableWorkbook = Workbook.createWorkbook(file)
+            val sheet = workbook.createSheet("Rendición - $nombreViaje", 0)
+            val headers = listOf("TAG", "Fecha", "Descripción", "Tipo de Gasto", "Forma de Pago", "Moneda", "Monto", "PT", "WP", "Persona", "Legajo", "Centro de Costos")
+            headers.forEachIndexed { index, header ->
+                sheet.addCell(Label(index, 0, header))
             }
-            compartirArchivoCSV(file)
+            listaDeGastos.forEachIndexed { rowIndex, gasto ->
+                val row = rowIndex + 1
+                sheet.addCell(Label(0, row, gasto.tagGasto))
+                sheet.addCell(Label(1, row, gasto.fecha))
+                sheet.addCell(Label(2, row, gasto.descripcion))
+                sheet.addCell(Label(3, row, gasto.tipoGasto))
+                sheet.addCell(Label(4, row, gasto.formaDePago))
+                sheet.addCell(Label(5, row, gasto.moneda))
+                sheet.addCell(Number(6, row, gasto.monto))
+                sheet.addCell(Label(7, row, gasto.imputacionPT))
+                sheet.addCell(Label(8, row, gasto.imputacionWP))
+                sheet.addCell(Label(9, row, gasto.nombrePersona))
+                sheet.addCell(Label(10, row, gasto.legajo))
+                sheet.addCell(Label(11, row, gasto.centroCostos))
+            }
+            workbook.write()
+            workbook.close()
+            compartirArchivoExcel(file)
         } catch (e: Exception) {
-            Log.e("ExportarCSV", "Error al generar el archivo CSV", e)
-            Toast.makeText(this, "Error al generar el archivo CSV", Toast.LENGTH_LONG).show()
+            Log.e("ExportarExcel", "Error al generar el archivo Excel", e)
+            Toast.makeText(this, "Error al generar el archivo Excel", Toast.LENGTH_LONG).show()
         }
     }
 
-    private fun compartirArchivoCSV(file: File) {
+    private fun compartirArchivoExcel(file: File) {
         val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/csv"
+            type = "application/vnd.ms-excel"
             putExtra(Intent.EXTRA_STREAM, uri)
             putExtra(Intent.EXTRA_SUBJECT, "Rendición de Viaje: $nombreViaje")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        startActivity(Intent.createChooser(shareIntent, "Compartir Rendición CSV"))
+        startActivity(Intent.createChooser(shareIntent, "Compartir Rendición"))
     }
 
     private fun exportarRecibosAPDF() {
@@ -238,7 +245,9 @@ class DetalleViajeActivity : AppCompatActivity() {
                     val scaledBitmap = Bitmap.createScaledBitmap(bitmap, anchoRecibo.toInt(), nuevoAlto.toInt(), true)
                     canvas.drawBitmap(scaledBitmap, xOffset, yPosTag + 10f, null)
                 } else {
-                    val textoSinRecibo = "${gasto.descripcion}\n${gasto.formaDePago}\n${gasto.fecha}\n${NumberFormat.getCurrencyInstance(Locale("es", "AR")).format(gasto.monto)} (${gasto.moneda})"
+                    val textoSinRecibo = "${gasto.descripcion}\n${gasto.formaDePago}\n${gasto.fecha}\n${
+                        NumberFormat.getCurrencyInstance(Locale("es", "AR")).format(gasto.monto)
+                    } (${gasto.moneda})"
                     val textLayout = StaticLayout.Builder.obtain(textoSinRecibo, 0, textoSinRecibo.length, paintTextoGasto, anchoRecibo.toInt()).build()
                     canvas.save()
                     canvas.translate(xOffset, yPosTag + 60f)
@@ -274,7 +283,7 @@ class DetalleViajeActivity : AppCompatActivity() {
             textSize = 10f
         }
 
-        // NUEVA LÓGICA: Obtenemos los datos del primer gasto de la lista
+        // Obtenemos los datos del primer gasto de la lista
         val primerGasto = listaDeGastos.firstOrNull()
         val nombrePersona = primerGasto?.nombrePersona ?: ""
         val legajo = primerGasto?.legajo ?: ""

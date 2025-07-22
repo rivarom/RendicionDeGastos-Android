@@ -24,13 +24,12 @@ android {
         }
     }
 
-    // Unifica la versión de Java y Kotlin a 11
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
     kotlinOptions {
-        jvmTarget = '11'
+        jvmTarget = '1.8'
     }
 
     buildFeatures {
@@ -39,6 +38,10 @@ android {
 }
 
 dependencies {
+    // LIBRERÍA EXCEL (NUEVA)
+    implementation 'net.sourceforge.jexcelapi:jxl:2.6.12'
+
+    // LIBRERÍAS EXISTENTES
     implementation 'androidx.core:core-splashscreen:1.0.1'
     implementation 'com.github.bumptech.glide:glide:4.16.0'
     implementation libs.firebase.auth.ktx
