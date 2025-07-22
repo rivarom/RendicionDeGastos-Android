@@ -180,7 +180,6 @@ class ConfiguracionActivity : AppCompatActivity() {
         val imputacionesAGuardar = imputacionesList.map { "${it.pt}::${it.wp}" }.toSet()
 
         with(userPrefs.edit()) {
-            // ... (guardado de datos personales, monedas, tipos de gasto y formas de pago sin cambios) ...
             putString("NOMBRE_PERSONA", binding.editTextNombrePersona.text.toString())
             putString("LEGAJO", binding.editTextLegajo.text.toString())
             putString("CENTRO_COSTOS", binding.editTextCentroCostos.text.toString())
@@ -188,13 +187,11 @@ class ConfiguracionActivity : AppCompatActivity() {
             putStringSet("MONEDAS", monedasList.toSet())
             putStringSet("TIPOS_GASTO", tiposGastoList.toSet())
             putStringSet("FORMAS_PAGO", formasPagoAGuardar)
-
-            // Guardar Imputaciones
             putStringSet("IMPUTACIONES", imputacionesAGuardar)
-
+            // --- LÍNEA NUEVA ---
+            putBoolean("CONFIGURACION_COMPLETA", true) // Marcamos que la configuración se guardó
             apply()
         }
-
         Toast.makeText(this, "Configuración guardada", Toast.LENGTH_SHORT).show()
         finish()
     }

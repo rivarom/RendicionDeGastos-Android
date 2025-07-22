@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -32,7 +33,6 @@ class MainActivity : AppCompatActivity() {
             val nombre = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_NOMBRE)
             val fecha = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA)
             val monedaDefecto = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_MONEDA_DEFECTO)
-            // Recibimos los nuevos datos de imputación
             val imputacionPT = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_PT)
             val imputacionWP = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_WP)
             val id = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_ID)
@@ -48,8 +48,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // La splash screen la manejaremos de otra forma más adelante si es necesario
-        // installSplashScreen()
         super.onCreate(savedInstanceState)
 
         if (Firebase.auth.currentUser == null) {
@@ -87,45 +85,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Reemplaza la función mostrarDialogoDeAcciones completa
-    private fun mostrarDialogoDeAcciones(viaje: Viaje) {
-        val opciones = arrayOf("Ver Gastos", "Editar Viaje", "Eliminar Viaje")
-
-        AlertDialog.Builder(this)
-            .setTitle(viaje.nombre)
-            .setItems(opciones) { _, which ->
-                when (which) {
-                    0 -> { // Ver Gastos
-                        val intent = Intent(this, DetalleViajeActivity::class.java)
-                        intent.putExtra("EXTRA_VIAJE_ID", viaje.id)
-                        intent.putExtra("EXTRA_VIAJE_NOMBRE", viaje.nombre)
-                        intent.putExtra("EXTRA_VIAJE_MONEDA_DEFECTO", viaje.monedaPorDefecto)
-                        // --- Líneas nuevas ---
-                        intent.putExtra("EXTRA_VIAJE_IMPUTACION_PT", viaje.imputacionPorDefectoPT)
-                        intent.putExtra("EXTRA_VIAJE_IMPUTACION_WP", viaje.imputacionPorDefectoWP)
-                        startActivity(intent)
-                    }
-                    1 -> { // Editar Viaje
-                        val intent = Intent(this, NuevoViajeActivity::class.java)
-                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_ID, viaje.id)
-                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_NOMBRE, viaje.nombre)
-                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA, viaje.fecha)
-                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_MONEDA_DEFECTO, viaje.monedaPorDefecto)
-                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_PT, viaje.imputacionPorDefectoPT)
-                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_WP, viaje.imputacionPorDefectoWP)
-                        nuevoViajeResultLauncher.launch(intent)
-                    }
-                    2 -> { // Eliminar Viaje
-                        mostrarDialogoDeConfirmacion(viaje)
-                    }
-                }
-            }
-            .show()
-    }
-
     override fun onResume() {
         super.onResume()
         if (Firebase.auth.currentUser != null) {
+            verificarConfiguracionYContinuar()
+        }
+    }
+
+    private fun verificarConfiguracionYContinuar() {
+        val userId = Firebase.auth.currentUser?.uid ?: return
+        val userPrefs = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
+        val configuracionCompleta = userPrefs.getBoolean("CONFIGURACION_COMPLETA", false)
+
+        if (!configuracionCompleta) {
+            // Si la configuración no está completa, forzamos al usuario a ir a la pantalla de Configuración.
+            binding.fabAgregarViaje.visibility = View.GONE // Ocultamos el botón de añadir
+            AlertDialog.Builder(this)
+                .setTitle("Configuración Requerida")
+                .setMessage("Antes de crear tu primer viaje, por favor completa tu configuración.")
+                .setPositiveButton("Ir a Configuración") { _, _ ->
+                    startActivity(Intent(this, ConfiguracionActivity::class.java))
+                }
+                .setCancelable(false)
+                .show()
+        } else {
+            // Si la configuración está completa, cargamos los viajes y mostramos el botón.
+            binding.fabAgregarViaje.visibility = View.VISIBLE
             cargarViajesDesdeFirestore()
         }
     }
@@ -153,10 +138,44 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun mostrarDialogoDeAcciones(viaje: Viaje) {
+        val opciones = arrayOf("Ver Gastos", "Editar Viaje", "Eliminar Viaje")
+
+        AlertDialog.Builder(this)
+            .setTitle(viaje.nombre)
+            .setItems(opciones) { _, which ->
+                when (which) {
+                    0 -> { // Ver Gastos
+                        val intent = Intent(this, DetalleViajeActivity::class.java)
+                        intent.putExtra("EXTRA_VIAJE_ID", viaje.id)
+                        intent.putExtra("EXTRA_VIAJE_NOMBRE", viaje.nombre)
+                        intent.putExtra("EXTRA_VIAJE_MONEDA_DEFECTO", viaje.monedaPorDefecto)
+                        intent.putExtra("EXTRA_VIAJE_IMPUTACION_PT", viaje.imputacionPorDefectoPT)
+                        intent.putExtra("EXTRA_VIAJE_IMPUTACION_WP", viaje.imputacionPorDefectoWP)
+                        startActivity(intent)
+                    }
+                    1 -> { // Editar Viaje
+                        val intent = Intent(this, NuevoViajeActivity::class.java)
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_ID, viaje.id)
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_NOMBRE, viaje.nombre)
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA, viaje.fecha)
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_MONEDA_DEFECTO, viaje.monedaPorDefecto)
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_PT, viaje.imputacionPorDefectoPT)
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_WP, viaje.imputacionPorDefectoWP)
+                        nuevoViajeResultLauncher.launch(intent)
+                    }
+                    2 -> { // Eliminar Viaje
+                        mostrarDialogoDeConfirmacion(viaje)
+                    }
+                }
+            }
+            .show()
+    }
+
     private fun mostrarDialogoDeConfirmacion(viaje: Viaje) {
         AlertDialog.Builder(this)
             .setTitle("Confirmar Eliminación")
-            .setMessage("¿Estás seguro de que quieres eliminar el viaje '${viaje.nombre}'? Esta acción no se puede deshacer.")
+            .setMessage("¿Estás seguro de que quieres eliminar el viaje '${viaje.nombre}'?")
             .setPositiveButton("Eliminar") { _, _ ->
                 eliminarViaje(viaje)
             }
@@ -215,7 +234,7 @@ class MainActivity : AppCompatActivity() {
         db.collection("viajes").add(nuevoViaje)
             .addOnSuccessListener {
                 Toast.makeText(this, "Viaje guardado", Toast.LENGTH_SHORT).show()
-                cargarViajesDesdeFirestore()
+                // No es necesario llamar a cargarViajes aquí, onResume lo hará
             }
             .addOnFailureListener { e ->
                 Toast.makeText(this, "Error al guardar el viaje", Toast.LENGTH_SHORT).show()
@@ -238,7 +257,7 @@ class MainActivity : AppCompatActivity() {
         db.collection("viajes").document(id).set(viajeActualizado)
             .addOnSuccessListener {
                 Toast.makeText(this, "Viaje actualizado", Toast.LENGTH_SHORT).show()
-                cargarViajesDesdeFirestore()
+                // No es necesario llamar a cargarViajes aquí, onResume lo hará
             }
             .addOnFailureListener { e ->
                 Toast.makeText(this, "Error al actualizar el viaje", Toast.LENGTH_SHORT).show()
