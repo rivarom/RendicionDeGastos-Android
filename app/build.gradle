@@ -38,7 +38,7 @@ android {
 }
 
 dependencies {
-    // LIBRERÍA EXCEL (NUEVA)
+    // LIBRERÍA EXCEL
     implementation 'net.sourceforge.jexcelapi:jxl:2.6.12'
 
     // LIBRERÍAS EXISTENTES

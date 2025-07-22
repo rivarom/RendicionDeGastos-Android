@@ -123,15 +123,19 @@ class DetalleViajeActivity : AppCompatActivity() {
             Toast.makeText(this, "No hay gastos para exportar", Toast.LENGTH_SHORT).show()
             return
         }
+
         val fileName = "Rendicion_${nombreViaje?.replace(" ", "_")}.xls"
         val file = File(externalCacheDir, fileName)
+
         try {
             val workbook: WritableWorkbook = Workbook.createWorkbook(file)
             val sheet = workbook.createSheet("Rendición - $nombreViaje", 0)
+
             val headers = listOf("TAG", "Fecha", "Descripción", "Tipo de Gasto", "Forma de Pago", "Moneda", "Monto", "PT", "WP", "Persona", "Legajo", "Centro de Costos")
             headers.forEachIndexed { index, header ->
                 sheet.addCell(Label(index, 0, header))
             }
+
             listaDeGastos.forEachIndexed { rowIndex, gasto ->
                 val row = rowIndex + 1
                 sheet.addCell(Label(0, row, gasto.tagGasto))
@@ -147,9 +151,11 @@ class DetalleViajeActivity : AppCompatActivity() {
                 sheet.addCell(Label(10, row, gasto.legajo))
                 sheet.addCell(Label(11, row, gasto.centroCostos))
             }
+
             workbook.write()
             workbook.close()
             compartirArchivoExcel(file)
+
         } catch (e: Exception) {
             Log.e("ExportarExcel", "Error al generar el archivo Excel", e)
             Toast.makeText(this, "Error al generar el archivo Excel", Toast.LENGTH_LONG).show()
@@ -289,7 +295,7 @@ class DetalleViajeActivity : AppCompatActivity() {
         val legajo = primerGasto?.legajo ?: ""
 
         val fechaCreacion = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
-        val textoPie = "$nombrePersona (Legajo: $legajo) | Viaje: $nombreViaje | Creado: $fechaCreacion"
+        val textoPie = "INVAP - Rendición de Viajes | $nombrePersona (Legajo: $legajo) | Viaje: $nombreViaje | Creado: $fechaCreacion"
         val textoPagina = "Página $paginaActual de $totalPaginas"
 
         canvas.drawText(textoPie, 40f, page.info.pageHeight - 20f, paint)
