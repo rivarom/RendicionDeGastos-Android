@@ -29,12 +29,14 @@ import com.invap.rendiciondegastos.databinding.ActivityDetalleViajeBinding
 import jxl.Workbook
 import jxl.write.Label
 import jxl.write.Number
+import jxl.write.WritableSheet
 import jxl.write.WritableWorkbook
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -107,7 +109,7 @@ class DetalleViajeActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_export_excel -> {
-                exportarAExcel()
+                exportarAExcelConPlantilla()
                 true
             }
             R.id.action_export_pdf -> {
@@ -118,7 +120,7 @@ class DetalleViajeActivity : AppCompatActivity() {
         }
     }
 
-    private fun exportarAExcel() {
+    private fun exportarAExcelConPlantilla() {
         if (listaDeGastos.isEmpty()) {
             Toast.makeText(this, "No hay gastos para exportar", Toast.LENGTH_SHORT).show()
             return
@@ -132,29 +134,44 @@ class DetalleViajeActivity : AppCompatActivity() {
             val userId = Firebase.auth.currentUser?.uid ?: return
             val userPrefs = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
             val tiposDeGastoConfigurados = userPrefs.getStringSet("TIPOS_GASTO", emptySet())?.toList()?.sorted() ?: emptyList()
+            val nombrePersona = userPrefs.getString("NOMBRE_PERSONA", "") ?: ""
+            val legajo = userPrefs.getString("LEGAJO", "") ?: ""
+            val centroCostos = userPrefs.getString("CENTRO_COSTOS", "") ?: ""
 
-            // Agrupamos los gastos
-            val gastosAgrupados = listaDeGastos.groupBy { "${it.formaDePago}_${it.moneda}" }
-
+            // Creamos un libro de trabajo vacío
             val workbook: WritableWorkbook = Workbook.createWorkbook(file)
 
+            // Agrupamos los gastos por forma de pago y moneda
+            val gastosAgrupados = listaDeGastos.groupBy { "${it.formaDePago}_${it.moneda}" }
+
             gastosAgrupados.forEach { (grupo, gastosDelGrupo) ->
-                val nombreHoja = grupo.replace(" ", "").replace("/", "").take(30)
+                val nombreHoja = gastosDelGrupo.first().formaDePago.replace(" ", "").take(30)
                 val sheet = workbook.createSheet(nombreHoja, workbook.numberOfSheets)
 
-                // Encabezados
+                // Escribir cabecera estática (puedes ajustarla)
+                sheet.addCell(Label(0, 0, "Rendición de Gastos"))
+                sheet.addCell(Label(0, 2, "Viaje:"))
+                sheet.addCell(Label(1, 2, nombreViaje))
+                sheet.addCell(Label(0, 3, "Persona:"))
+                sheet.addCell(Label(1, 3, "$nombrePersona (Legajo: $legajo)"))
+                sheet.addCell(Label(0, 4, "Centro de Costos:"))
+                sheet.addCell(Label(1, 4, centroCostos))
+
+                // Encabezados dinámicos de la tabla de gastos
+                val filaInicioTabla = 6
                 val headers = mutableListOf("Comprobante")
                 headers.addAll(tiposDeGastoConfigurados)
-                headers.addAll(listOf("Total Fila", "CC", "PT", "WP"))
+                headers.addAll(listOf("Total Fila", "PT", "WP"))
                 headers.forEachIndexed { index, header ->
-                    sheet.addCell(Label(index, 0, header))
+                    sheet.addCell(Label(index, filaInicioTabla, header))
                 }
 
+                // Mapa para guardar los totales de cada columna
                 val totalesPorColumna = DoubleArray(tiposDeGastoConfigurados.size) { 0.0 }
 
-                // Datos
+                // Llenar filas de datos
                 gastosDelGrupo.forEachIndexed { rowIndex, gasto ->
-                    val row = rowIndex + 1
+                    val row = filaInicioTabla + 1 + rowIndex
                     sheet.addCell(Label(0, row, gasto.tagGasto))
 
                     val columnaGastoIndex = tiposDeGastoConfigurados.indexOf(gasto.tipoGasto)
@@ -164,13 +181,12 @@ class DetalleViajeActivity : AppCompatActivity() {
                     }
 
                     sheet.addCell(Number(headers.indexOf("Total Fila"), row, gasto.monto))
-                    sheet.addCell(Label(headers.indexOf("CC"), row, gasto.centroCostos))
                     sheet.addCell(Label(headers.indexOf("PT"), row, gasto.imputacionPT))
                     sheet.addCell(Label(headers.indexOf("WP"), row, gasto.imputacionWP))
                 }
 
-                // Fila de Totales
-                val totalRowIndex = gastosDelGrupo.size + 1
+                // Fila de totales
+                val totalRowIndex = filaInicioTabla + 1 + gastosDelGrupo.size
                 sheet.addCell(Label(0, totalRowIndex, "TOTALES"))
                 var totalGeneral = 0.0
                 totalesPorColumna.forEachIndexed { index, total ->
@@ -313,11 +329,9 @@ class DetalleViajeActivity : AppCompatActivity() {
     private fun dibujarPieDePagina(page: PdfDocument.Page, paginaActual: Int, totalPaginas: Int) {
         val canvas = page.canvas
         val paint = Paint().apply {
-            color = android.graphics.Color.GRAY
-            textSize = 10f
+            color = android.graphics.Color.GRAY; textSize = 10f
         }
 
-        // Obtenemos los datos del primer gasto de la lista
         val primerGasto = listaDeGastos.firstOrNull()
         val nombrePersona = primerGasto?.nombrePersona ?: ""
         val legajo = primerGasto?.legajo ?: ""
@@ -325,7 +339,6 @@ class DetalleViajeActivity : AppCompatActivity() {
         val fechaCreacion = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
         val textoPie = "INVAP - Rendición de Viajes | $nombrePersona (Legajo: $legajo) | Viaje: $nombreViaje | Creado: $fechaCreacion"
         val textoPagina = "Página $paginaActual de $totalPaginas"
-
         canvas.drawText(textoPie, 40f, page.info.pageHeight - 20f, paint)
         paint.textAlign = Paint.Align.RIGHT
         canvas.drawText(textoPagina, page.info.pageWidth - 40f, page.info.pageHeight - 20f, paint)
