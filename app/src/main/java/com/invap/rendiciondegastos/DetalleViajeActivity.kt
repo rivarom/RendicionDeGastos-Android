@@ -171,9 +171,11 @@ class DetalleViajeActivity : AppCompatActivity() {
             val boldFont = WritableFont(WritableFont.ARIAL, 10, WritableFont.BOLD)
             val boldFormat = WritableCellFormat(boldFont)
 
-            val centerBoldFormat = WritableCellFormat(boldFont).apply {
+            val centerBoldUppercaseFormat = WritableCellFormat(boldFont).apply {
                 setAlignment(Alignment.CENTRE)
             }
+
+            val normalFormat = WritableCellFormat()
 
             val thickHeaderFormat = WritableCellFormat(boldFont).apply {
                 setBackground(Colour.GRAY_25)
@@ -198,6 +200,9 @@ class DetalleViajeActivity : AppCompatActivity() {
             val totalLabelFormat = WritableCellFormat(boldFont).apply {
                 setBorder(Border.ALL, BorderLineStyle.MEDIUM)
             }
+            val signatureBoxFormat = WritableCellFormat().apply {
+                setBorder(Border.ALL, BorderLineStyle.THIN)
+            }
 
             gastosAgrupados.forEach { (formaDePago, gastosDelGrupo) ->
                 val nombreHoja = formaDePago.replace(Regex("[^A-Za-z0-9]"), "").take(30)
@@ -212,38 +217,37 @@ class DetalleViajeActivity : AppCompatActivity() {
                 val primerGasto = gastosDelGrupo.first()
                 val viajeActual = listaDeViajes.find { it.id == viajeId }
 
-                sheet.setRowView(8, 900)
-                sheet.addCell(Label(1, 8, "INVAP - Rendición de Viajes", tituloFormat))
+                sheet.setRowView(6, 900) // Fila 7
+                sheet.addCell(Label(1, 6, "INVAP - Rendición de Viajes", tituloFormat))
 
                 sheet.addCell(Label(1, 1, "Plazos para la rendición:", boldFormat))
                 sheet.addCell(Label(1, 2, "Los anticipos deberán ser rendidos dentro de la semana de haber concluido el viaje."))
                 sheet.addCell(Label(1, 3, "En caso de tener que realizar un nuevo desplazamiento..."))
                 sheet.addCell(Label(1, 4, "Los anticipos tendrán vencimiento a los 30 días..."))
 
-                sheet.addCell(Label(5, 5, "RENDICIÓN DE GASTOS REALIZADOS CON", centerBoldFormat))
-                sheet.addCell(Label(5, 6, formaDePago.uppercase(Locale.getDefault()), centerBoldFormat))
+                sheet.addCell(Label(5, 7, "RENDICIÓN DE GASTOS REALIZADOS CON", centerBoldUppercaseFormat))
+                sheet.addCell(Label(5, 8, formaDePago.uppercase(Locale.getDefault()), centerBoldUppercaseFormat))
 
-                sheet.addCell(Label(8, 9, "RENDICIÓN DE GASTOS DE:"))
-                sheet.addCell(Label(8, 10, primerGasto.nombrePersona, boldFormat))
+                sheet.addCell(Label(6, 10, "RENDICIÓN DE GASTOS DE:", normalFormat))
+                sheet.addCell(Label(6, 11, primerGasto.nombrePersona, boldFormat))
 
-                sheet.addCell(Label(1, 12, "Viaje:", boldFormat12))
-                sheet.addCell(Label(2, 12, nombreViaje))
-                sheet.addCell(Label(5, 12, "N° LEGAJO:"))
-                sheet.addCell(Label(6, 12, primerGasto.legajo))
+                sheet.addCell(Label(1, 12, "Viaje:", normalFormat))
+                sheet.addCell(Label(2, 12, nombreViaje, boldFormat))
 
-                sheet.addCell(Label(1, 13, "Fecha:", boldFormat12))
-                sheet.addCell(Label(2, 13, viajeActual?.fecha))
-                sheet.addCell(Label(7, 13, "CC ${primerGasto.centroCostos} - PT ${viajeActual?.imputacionPorDefectoPT}"))
+                sheet.addCell(Label(1, 13, "Fecha:", normalFormat))
+                sheet.addCell(Label(2, 13, viajeActual?.fecha, boldFormat))
+
+                sheet.addCell(Label(6, 12, "N° LEGAJO: ${primerGasto.legajo}", boldFormat))
+                sheet.addCell(Label(6, 13, "CC ${primerGasto.centroCostos} - PT ${viajeActual?.imputacionPorDefectoPT}", boldFormat))
 
                 // --- Tabla de Gastos ---
-                val filaInicioTabla = 15
+                val filaInicioTabla = 16
                 val colOffset = 1
                 sheet.setRowView(filaInicioTabla, 500, false)
 
                 val headers = mutableListOf("Comprobante")
                 headers.addAll(tiposDeGastoConfigurados)
                 headers.addAll(listOf("Total", "CC", "PT", "WP"))
-                val ultimaColumnaTabla = headers.size + colOffset
 
                 headers.forEachIndexed { index, header ->
                     sheet.addCell(Label(index + colOffset, filaInicioTabla, header, thickHeaderFormat))
@@ -292,30 +296,31 @@ class DetalleViajeActivity : AppCompatActivity() {
 
                 // --- Pie de la Planilla ---
                 val filaPie = totalRowIndex + 4
-                sheet.addCell(Label(1, filaPie, "Autorizó"))
-                sheet.addCell(Label(1, filaPie + 2, "Reviso"))
-
-                sheet.addCell(Label(6, filaPie, "Firma y Aclaración"))
-                sheet.addCell(Label(6, filaPie + 1, "del titular de la rendición"))
-
                 sheet.setRowView(filaPie, 500)
                 sheet.setRowView(filaPie + 2, 500)
-                sheet.addCell(Label(2, filaPie, "", tableCellFormat)); sheet.setColumnView(2, 12)
-                sheet.addCell(Label(7, filaPie, "", tableCellFormat)); sheet.setColumnView(7, 12)
-                sheet.addCell(Label(2, filaPie + 2, "", tableCellFormat))
+
+                sheet.addCell(Label(1, filaPie, "Autorizó"))
+                sheet.mergeCells(2, filaPie, 3, filaPie)
+                sheet.addCell(Label(2, filaPie, "", signatureBoxFormat))
+
+                sheet.addCell(Label(1, filaPie + 2, "Reviso"))
+                sheet.mergeCells(2, filaPie + 2, 3, filaPie + 2)
+                sheet.addCell(Label(2, filaPie + 2, "", signatureBoxFormat))
+
+                sheet.mergeCells(7, filaPie, 8, filaPie)
+                sheet.addCell(Label(7, filaPie, "", signatureBoxFormat))
+                sheet.addCell(Label(7, filaPie + 1, "Firma y Aclaración del titular de la rendición"))
 
                 val filaLeyendas = filaPie + 5
                 sheet.addCell(Label(1, filaLeyendas, "LOS GASTOS SIN COMPROBANTE DEBEN SER DETALLADOS."))
-                sheet.addCell(Label(1, filaLeyendas + 1, "LAS FACTURAS DE RESTAURANTE CUANDO SON VARIOS COMENSALES DEBE COLOCARSE EN EL REVERSO EL DETALLE DE LOS MISMOS."))
+                sheet.addCell(Label(1, filaLeyendas + 1, "LAS FACTURAS DE RESTAURANTE CUANDO SON VARIOS COMENSALES..."))
 
                 // Ancho de Columnas
-                sheet.setColumnView(0, 6)
-                (1..headers.indexOf("Total")).forEach { col ->
-                    val cellView = CellView()
-                    cellView.setAutosize(true)
-                    sheet.setColumnView(col + colOffset -1, cellView)
+                sheet.setColumnView(0, 6) // Columna A
+                (1 until headers.size + colOffset).forEach { col ->
+                    sheet.setColumnView(col, 21) // Columnas de la tabla
                 }
-                sheet.setColumnView(ultimaColumnaTabla, 6)
+                sheet.setColumnView(headers.size + colOffset, 6)
             }
 
             workbook.write()
