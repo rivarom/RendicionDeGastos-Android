@@ -160,32 +160,23 @@ class DetalleViajeActivity : AppCompatActivity() {
             val gastosAgrupados = listaDeGastos.groupBy { it.formaDePago }
             val workbook: WritableWorkbook = Workbook.createWorkbook(file)
 
-            // --- Definición de Formatos ---
+            // --- Definición de Formatos (SIN CAMBIOS) ---
             val tituloFont = WritableFont(WritableFont.ARIAL, 28, WritableFont.BOLD)
             tituloFont.setColour(Colour.GREEN)
             val tituloFormat = WritableCellFormat(tituloFont)
-
             val boldFont12 = WritableFont(WritableFont.ARIAL, 12, WritableFont.BOLD)
             val boldFormat12 = WritableCellFormat(boldFont12)
-
             val boldFont = WritableFont(WritableFont.ARIAL, 10, WritableFont.BOLD)
             val boldFormat = WritableCellFormat(boldFont)
-
-            val centerBoldUppercaseFormat = WritableCellFormat(boldFont).apply {
-                setAlignment(Alignment.CENTRE)
-            }
-
+            val centerBoldUppercaseFormat = WritableCellFormat(boldFont).apply { setAlignment(Alignment.CENTRE) }
             val normalFormat = WritableCellFormat()
-
             val thickHeaderFormat = WritableCellFormat(boldFont).apply {
                 setBackground(Colour.GRAY_25)
                 setBorder(Border.ALL, BorderLineStyle.MEDIUM)
                 setAlignment(Alignment.CENTRE)
                 setVerticalAlignment(VerticalAlignment.CENTRE)
             }
-            val tableCellFormat = WritableCellFormat().apply {
-                setBorder(Border.ALL, BorderLineStyle.THIN)
-            }
+            val tableCellFormat = WritableCellFormat().apply { setBorder(Border.ALL, BorderLineStyle.THIN) }
             val tableCellCenterFormat = WritableCellFormat().apply {
                 setBorder(Border.ALL, BorderLineStyle.THIN)
                 setAlignment(Alignment.CENTRE)
@@ -207,36 +198,28 @@ class DetalleViajeActivity : AppCompatActivity() {
             gastosAgrupados.forEach { (formaDePago, gastosDelGrupo) ->
                 val nombreHoja = formaDePago.replace(Regex("[^A-Za-z0-9]"), "").take(30)
                 val sheet = workbook.createSheet(nombreHoja, workbook.numberOfSheets)
-
                 val settings: SheetSettings = sheet.settings
                 settings.setPaperSize(jxl.format.PaperSize.A4)
                 settings.setOrientation(jxl.format.PageOrientation.LANDSCAPE)
                 settings.setFitWidth(1)
 
-                // --- Cabecera de la Planilla ---
+                // --- Cabecera de la Planilla (SIN CAMBIOS) ---
                 val primerGasto = gastosDelGrupo.first()
                 val viajeActual = listaDeViajes.find { it.id == viajeId }
-
-                sheet.setRowView(6, 900) // Fila 7
+                sheet.setRowView(6, 900)
                 sheet.addCell(Label(1, 6, "INVAP - Rendición de Viajes", tituloFormat))
-
                 sheet.addCell(Label(1, 1, "Plazos para la rendición:", boldFormat))
                 sheet.addCell(Label(1, 2, "Los anticipos deberán ser rendidos dentro de la semana de haber concluido el viaje."))
                 sheet.addCell(Label(1, 3, "En caso de tener que realizar un nuevo desplazamiento..."))
                 sheet.addCell(Label(1, 4, "Los anticipos tendrán vencimiento a los 30 días..."))
-
                 sheet.addCell(Label(5, 7, "RENDICIÓN DE GASTOS REALIZADOS CON", centerBoldUppercaseFormat))
                 sheet.addCell(Label(5, 8, formaDePago.uppercase(Locale.getDefault()), centerBoldUppercaseFormat))
-
                 sheet.addCell(Label(6, 10, "RENDICIÓN DE GASTOS DE:", normalFormat))
                 sheet.addCell(Label(6, 11, primerGasto.nombrePersona, boldFormat))
-
                 sheet.addCell(Label(1, 12, "Viaje:", normalFormat))
                 sheet.addCell(Label(2, 12, nombreViaje, boldFormat))
-
                 sheet.addCell(Label(1, 13, "Fecha:", normalFormat))
                 sheet.addCell(Label(2, 13, viajeActual?.fecha, boldFormat))
-
                 sheet.addCell(Label(6, 12, "N° LEGAJO: ${primerGasto.legajo}", boldFormat))
                 sheet.addCell(Label(6, 13, "CC ${primerGasto.centroCostos} - PT ${viajeActual?.imputacionPorDefectoPT}", boldFormat))
 
@@ -245,15 +228,18 @@ class DetalleViajeActivity : AppCompatActivity() {
                 val colOffset = 1
                 sheet.setRowView(filaInicioTabla, 500, false)
 
+                // <<< CAMBIO 1: SE ACTUALIZAN LOS ENCABEZADOS DE LA TABLA >>>
                 val headers = mutableListOf("Comprobante")
                 headers.addAll(tiposDeGastoConfigurados)
-                headers.addAll(listOf("Total", "CC", "PT", "WP"))
+                headers.addAll(listOf("Moneda", "Importe en Pesos", "Importe en Dólares", "CC", "PT", "WP"))
 
                 headers.forEachIndexed { index, header ->
                     sheet.addCell(Label(index + colOffset, filaInicioTabla, header, thickHeaderFormat))
                 }
 
-                val totalesPorColumna = DoubleArray(tiposDeGastoConfigurados.size) { 0.0 }
+                val totalesPorColumnaTipoGasto = DoubleArray(tiposDeGastoConfigurados.size) { 0.0 }
+                var totalPesos = 0.0
+                var totalDolares = 0.0
 
                 gastosDelGrupo.forEachIndexed { rowIndex, gasto ->
                     val row = filaInicioTabla + 1 + rowIndex
@@ -262,7 +248,7 @@ class DetalleViajeActivity : AppCompatActivity() {
                     val columnaGastoIndex = tiposDeGastoConfigurados.indexOf(gasto.tipoGasto)
                     if (columnaGastoIndex != -1) {
                         sheet.addCell(Number(columnaGastoIndex + 1 + colOffset, row, gasto.monto, tableNumberCellFormat))
-                        totalesPorColumna[columnaGastoIndex] += gasto.monto
+                        totalesPorColumnaTipoGasto[columnaGastoIndex] += gasto.monto
                     }
 
                     (1..tiposDeGastoConfigurados.size).forEach { colIdx ->
@@ -271,7 +257,22 @@ class DetalleViajeActivity : AppCompatActivity() {
                         }
                     }
 
-                    sheet.addCell(Number(headers.indexOf("Total") + colOffset, row, gasto.monto, tableNumberCellFormat))
+                    // <<< CAMBIO 2: SE AÑADE LA LÓGICA PARA LAS NUEVAS COLUMNAS >>>
+                    val colMoneda = headers.indexOf("Moneda") + colOffset
+                    val colPesos = headers.indexOf("Importe en Pesos") + colOffset
+                    val colDolares = headers.indexOf("Importe en Dólares") + colOffset
+
+                    sheet.addCell(Label(colMoneda, row, gasto.moneda, tableCellCenterFormat))
+
+                    if (gasto.moneda.equals("Pesos", ignoreCase = true)) {
+                        sheet.addCell(Number(colPesos, row, gasto.monto, tableNumberCellFormat))
+                        totalPesos += gasto.monto
+                    } else if (gasto.moneda.equals("Dólar", ignoreCase = true) || gasto.moneda.equals("USD", ignoreCase = true)) {
+                        sheet.addCell(Number(colDolares, row, gasto.monto, tableNumberCellFormat))
+                        totalDolares += gasto.monto
+                    }
+
+                    // Las celdas de imputación ahora usan los nuevos índices de header
                     sheet.addCell(Label(headers.indexOf("CC") + colOffset, row, gasto.centroCostos, tableCellCenterFormat))
                     sheet.addCell(Label(headers.indexOf("PT") + colOffset, row, gasto.imputacionPT, tableCellCenterFormat))
                     sheet.addCell(Label(headers.indexOf("WP") + colOffset, row, gasto.imputacionWP, tableCellCenterFormat))
@@ -280,45 +281,37 @@ class DetalleViajeActivity : AppCompatActivity() {
                 // Fila de Totales
                 val totalRowIndex = filaInicioTabla + 1 + gastosDelGrupo.size
                 sheet.addCell(Label(0 + colOffset, totalRowIndex, "TOTALES", totalLabelFormat))
-                var totalGeneral = 0.0
-                totalesPorColumna.forEachIndexed { index, total ->
+
+                // <<< CAMBIO 3: SE ACTUALIZA LA ESCRITURA DE TOTALES >>>
+                totalesPorColumnaTipoGasto.forEachIndexed { index, total ->
                     if (total > 0) {
                         sheet.addCell(Number(index + 1 + colOffset, totalRowIndex, total, totalFormat))
                     } else {
                         sheet.addCell(Label(index + 1 + colOffset, totalRowIndex, "", totalFormat))
                     }
-                    totalGeneral += total
                 }
-                sheet.addCell(Number(headers.indexOf("Total") + colOffset, totalRowIndex, totalGeneral, totalFormat))
-                (headers.indexOf("Total") + 1 until headers.size).forEach { index ->
-                    sheet.addCell(Label(index + colOffset, totalRowIndex, "", totalLabelFormat))
-                }
+                sheet.addCell(Number(headers.indexOf("Importe en Pesos") + colOffset, totalRowIndex, totalPesos, totalFormat))
+                sheet.addCell(Number(headers.indexOf("Importe en Dólares") + colOffset, totalRowIndex, totalDolares, totalFormat))
 
-                // --- Pie de la Planilla ---
+                // --- Pie de la Planilla y Ancho de Columnas (SIN CAMBIOS) ---
                 val filaPie = totalRowIndex + 4
                 sheet.setRowView(filaPie, 500)
                 sheet.setRowView(filaPie + 2, 500)
-
                 sheet.addCell(Label(1, filaPie, "Autorizó"))
                 sheet.mergeCells(2, filaPie, 3, filaPie)
                 sheet.addCell(Label(2, filaPie, "", signatureBoxFormat))
-
                 sheet.addCell(Label(1, filaPie + 2, "Reviso"))
                 sheet.mergeCells(2, filaPie + 2, 3, filaPie + 2)
                 sheet.addCell(Label(2, filaPie + 2, "", signatureBoxFormat))
-
                 sheet.mergeCells(7, filaPie, 8, filaPie)
                 sheet.addCell(Label(7, filaPie, "", signatureBoxFormat))
                 sheet.addCell(Label(7, filaPie + 1, "Firma y Aclaración del titular de la rendición"))
-
                 val filaLeyendas = filaPie + 5
                 sheet.addCell(Label(1, filaLeyendas, "LOS GASTOS SIN COMPROBANTE DEBEN SER DETALLADOS."))
                 sheet.addCell(Label(1, filaLeyendas + 1, "LAS FACTURAS DE RESTAURANTE CUANDO SON VARIOS COMENSALES..."))
-
-                // Ancho de Columnas
-                sheet.setColumnView(0, 6) // Columna A
+                sheet.setColumnView(0, 6)
                 (1 until headers.size + colOffset).forEach { col ->
-                    sheet.setColumnView(col, 21) // Columnas de la tabla
+                    sheet.setColumnView(col, 21)
                 }
                 sheet.setColumnView(headers.size + colOffset, 6)
             }
