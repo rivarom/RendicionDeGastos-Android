@@ -195,6 +195,7 @@ class DetalleViajeActivity : AppCompatActivity() {
             val signatureBoxFormat = WritableCellFormat().apply {
                 setBorder(Border.ALL, BorderLineStyle.THIN)
             }
+            val totalLabelBorderlessFormat = WritableCellFormat(boldFont)
 
             gastosAgrupados.forEach { (formaDePago, gastosDelGrupo) ->
                 val nombreHoja = formaDePago.replace(Regex("[^A-Za-z0-9]"), "").take(30)
@@ -237,8 +238,7 @@ class DetalleViajeActivity : AppCompatActivity() {
                     sheet.addCell(Label(index + colOffset, filaInicioTabla, header, thickHeaderFormat))
                 }
 
-                var totalPesos = 0.0
-                var totalDolares = 0.0
+
                 val totalesPorTipoGasto = DoubleArray(tiposDeGastoConfigurados.size) { 0.0 }
 
                 gastosDelGrupo.forEachIndexed { rowIndex, gasto ->
@@ -264,11 +264,9 @@ class DetalleViajeActivity : AppCompatActivity() {
                     if (gasto.moneda.equals("Pesos", ignoreCase = true)) {
                         sheet.addCell(Number(colPesos, row, gasto.monto, tableNumberCellFormat))
                         sheet.addCell(Label(colDolares, row, "", tableCellFormat))
-                        totalPesos += gasto.monto
                     } else if (gasto.moneda.equals("Dólar", ignoreCase = true) || gasto.moneda.equals("USD", ignoreCase = true)) {
                         sheet.addCell(Label(colPesos, row, "", tableCellFormat))
                         sheet.addCell(Number(colDolares, row, gasto.monto, tableNumberCellFormat))
-                        totalDolares += gasto.monto
                     } else {
                         sheet.addCell(Label(colPesos, row, "", tableCellFormat))
                         sheet.addCell(Label(colDolares, row, "", tableCellFormat))
@@ -281,22 +279,50 @@ class DetalleViajeActivity : AppCompatActivity() {
 
                 // Fila de Totales
                 val totalRowIndex = filaInicioTabla + 1 + gastosDelGrupo.size
+// La celda "TOTALES" sí tiene borde
                 sheet.addCell(Label(0 + colOffset, totalRowIndex, "TOTALES", totalLabelFormat))
-                totalesPorTipoGasto.forEachIndexed { index, total ->
-                    if (total > 0) {
-                        sheet.addCell(Number(index + 1 + colOffset, totalRowIndex, total, totalFormat))
-                    } else {
-                        sheet.addCell(Label(index + 1 + colOffset, totalRowIndex, "", totalFormat))
-                    }
-                }
-                sheet.addCell(Number(headers.indexOf("Importe en Pesos") + colOffset, totalRowIndex, totalPesos, totalFormat))
-                sheet.addCell(Number(headers.indexOf("Importe en Dólares") + colOffset, totalRowIndex, totalDolares, totalFormat))
-                (headers.indexOf("Importe en Dólares") + 1 until headers.size).forEach { index ->
-                    sheet.addCell(Label(index + colOffset, totalRowIndex, "", totalLabelFormat))
+
+// Las celdas vacías debajo de los tipos de gasto usan el nuevo formato SIN borde
+                (1..tiposDeGastoConfigurados.size).forEach { colIdx ->
+                    sheet.addCell(Label(colIdx + colOffset, totalRowIndex, "", totalLabelBorderlessFormat))
                 }
 
+                val colPesosIndex = headers.indexOf("Importe en Pesos") + colOffset
+                val colDolaresIndex = headers.indexOf("Importe en Dólares") + colOffset
+                val primeraFilaDatos = filaInicioTabla + 2
+                val ultimaFilaDatos = totalRowIndex
+
+// Las celdas con las fórmulas de suma SÍ tienen borde
+                val colPesosLetra = ('A' + colPesosIndex)
+                val formulaPesos = "SUMA(${colPesosLetra}$primeraFilaDatos:${colPesosLetra}$ultimaFilaDatos)"
+                sheet.addCell(Formula(colPesosIndex, totalRowIndex, formulaPesos, totalFormat))
+
+                val colDolaresLetra = ('A' + colDolaresIndex)
+                val formulaDolares = "SUMA(${colDolaresLetra}$primeraFilaDatos:${colDolaresLetra}$ultimaFilaDatos)"
+                sheet.addCell(Formula(colDolaresIndex, totalRowIndex, formulaDolares, totalFormat))
+
+// Las celdas vacías después de los totales usan el nuevo formato SIN borde
+                (headers.indexOf("Importe en Dólares") + 1 until headers.size).forEach { index ->
+                    sheet.addCell(Label(index + colOffset, totalRowIndex, "", totalLabelBorderlessFormat))
+                }
+// --- NUEVA SECCIÓN: ADELANTO, CONSUMOS, SALDO ---
+                val filaAdelanto = totalRowIndex + 2 // Dejamos una fila en blanco
+                val colEtiqueta = headers.indexOf("Importe en Pesos") - 1 // Alineado a la izquierda de los importes
+
+                sheet.addCell(Label(colEtiqueta, filaAdelanto, "Adelanto:", boldFormat))
+                sheet.addCell(Label(colPesosIndex, filaAdelanto, "", tableCellFormat))
+                sheet.addCell(Label(colDolaresIndex, filaAdelanto, "", tableCellFormat))
+
+                sheet.addCell(Label(colEtiqueta, filaAdelanto + 1, "Consumos:", boldFormat))
+                sheet.addCell(Label(colPesosIndex, filaAdelanto + 1, "", tableCellFormat))
+                sheet.addCell(Label(colDolaresIndex, filaAdelanto + 1, "", tableCellFormat))
+
+                sheet.addCell(Label(colEtiqueta, filaAdelanto + 2, "Saldo:", boldFormat))
+                sheet.addCell(Label(colPesosIndex, filaAdelanto + 2, "", tableCellFormat))
+                sheet.addCell(Label(colDolaresIndex, filaAdelanto + 2, "", tableCellFormat))
+
                 // --- Pie de la Planilla ---
-                val filaPie = totalRowIndex + 4
+                val filaPie = totalRowIndex + 6
                 sheet.setRowView(filaPie, 500); sheet.setRowView(filaPie + 2, 500)
                 sheet.addCell(Label(1, filaPie, "Autorizó")); sheet.mergeCells(2, filaPie, 3, filaPie); sheet.addCell(Label(2, filaPie, "", signatureBoxFormat))
                 sheet.addCell(Label(1, filaPie + 2, "Reviso")); sheet.mergeCells(2, filaPie + 2, 3, filaPie + 2); sheet.addCell(Label(2, filaPie + 2, "", signatureBoxFormat))
