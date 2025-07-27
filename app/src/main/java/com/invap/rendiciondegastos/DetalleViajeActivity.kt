@@ -182,11 +182,27 @@ class DetalleViajeActivity : AppCompatActivity() {
                 setBorder(Border.ALL, BorderLineStyle.THIN)
                 setAlignment(Alignment.CENTRE)
             }
+            // Formatos de número específicos para cada moneda
+            val pesosAccountingFormat = jxl.write.NumberFormat("$ #,##0.00")
+            val dolaresAccountingFormat = jxl.write.NumberFormat("USD #,##0.00")
+
+// Formatos de celda para la tabla de
             val accountingFormat = jxl.write.NumberFormat("#,##0.00")
             val tableNumberCellFormat = WritableCellFormat(accountingFormat).apply {
                 setBorder(Border.ALL, BorderLineStyle.THIN)
             }
-            val totalFormat = WritableCellFormat(boldFont, accountingFormat).apply {
+            val tablePesosCellFormat = WritableCellFormat(pesosAccountingFormat).apply {
+                setBorder(Border.ALL, BorderLineStyle.THIN)
+            }
+            val tableDolaresCellFormat = WritableCellFormat(dolaresAccountingFormat).apply {
+                setBorder(Border.ALL, BorderLineStyle.THIN)
+            }
+
+// Formatos de celda para la fila de totales
+            val totalPesosFormat = WritableCellFormat(boldFont, pesosAccountingFormat).apply {
+                setBorder(Border.ALL, BorderLineStyle.MEDIUM)
+            }
+            val totalDolaresFormat = WritableCellFormat(boldFont, dolaresAccountingFormat).apply {
                 setBorder(Border.ALL, BorderLineStyle.MEDIUM)
             }
             val totalLabelFormat = WritableCellFormat(boldFont).apply {
@@ -262,11 +278,11 @@ class DetalleViajeActivity : AppCompatActivity() {
                     val colDolares = headers.indexOf("Importe en Dólares") + colOffset
                     sheet.addCell(Label(colMoneda, row, gasto.moneda, tableCellCenterFormat))
                     if (gasto.moneda.equals("Pesos", ignoreCase = true)) {
-                        sheet.addCell(Number(colPesos, row, gasto.monto, tableNumberCellFormat))
+                        sheet.addCell(Number(colPesos, row, gasto.monto, totalPesosFormat))
                         sheet.addCell(Label(colDolares, row, "", tableCellFormat))
                     } else if (gasto.moneda.equals("Dólar", ignoreCase = true) || gasto.moneda.equals("USD", ignoreCase = true)) {
                         sheet.addCell(Label(colPesos, row, "", tableCellFormat))
-                        sheet.addCell(Number(colDolares, row, gasto.monto, tableNumberCellFormat))
+                        sheet.addCell(Number(colDolares, row, gasto.monto, totalDolaresFormat))
                     } else {
                         sheet.addCell(Label(colPesos, row, "", tableCellFormat))
                         sheet.addCell(Label(colDolares, row, "", tableCellFormat))
@@ -295,11 +311,11 @@ class DetalleViajeActivity : AppCompatActivity() {
 // Las celdas con las fórmulas de suma SÍ tienen borde
                 val colPesosLetra = ('A' + colPesosIndex)
                 val formulaPesos = "SUMA(${colPesosLetra}$primeraFilaDatos:${colPesosLetra}$ultimaFilaDatos)"
-                sheet.addCell(Formula(colPesosIndex, totalRowIndex, formulaPesos, totalFormat))
+                sheet.addCell(Formula(colPesosIndex, totalRowIndex, formulaPesos, tablePesosCellFormat))
 
                 val colDolaresLetra = ('A' + colDolaresIndex)
                 val formulaDolares = "SUMA(${colDolaresLetra}$primeraFilaDatos:${colDolaresLetra}$ultimaFilaDatos)"
-                sheet.addCell(Formula(colDolaresIndex, totalRowIndex, formulaDolares, totalFormat))
+                sheet.addCell(Formula(colDolaresIndex, totalRowIndex, formulaDolares, tableDolaresCellFormat))
 
 // Las celdas vacías después de los totales usan el nuevo formato SIN borde
                 (headers.indexOf("Importe en Dólares") + 1 until headers.size).forEach { index ->
@@ -314,12 +330,12 @@ class DetalleViajeActivity : AppCompatActivity() {
                 sheet.addCell(Label(colDolaresIndex, filaAdelanto, "", tableCellFormat))
 
                 sheet.addCell(Label(colEtiqueta, filaAdelanto + 1, "Consumos:", boldFormat))
-                sheet.addCell(Label(colPesosIndex, filaAdelanto + 1, "", tableCellFormat))
-                sheet.addCell(Label(colDolaresIndex, filaAdelanto + 1, "", tableCellFormat))
+                sheet.addCell(Label(colPesosIndex, filaAdelanto + 1, "", totalPesosFormat))
+                sheet.addCell(Label(colDolaresIndex, filaAdelanto + 1, "", totalPesosFormat))
 
                 sheet.addCell(Label(colEtiqueta, filaAdelanto + 2, "Saldo:", boldFormat))
-                sheet.addCell(Label(colPesosIndex, filaAdelanto + 2, "", tableCellFormat))
-                sheet.addCell(Label(colDolaresIndex, filaAdelanto + 2, "", tableCellFormat))
+                sheet.addCell(Label(colPesosIndex, filaAdelanto + 2, "", totalDolaresFormat))
+                sheet.addCell(Label(colDolaresIndex, filaAdelanto + 2, "", totalDolaresFormat))
 
                 // --- Pie de la Planilla ---
                 val filaPie = totalRowIndex + 6
