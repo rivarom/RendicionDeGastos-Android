@@ -308,7 +308,7 @@ class DetalleViajeActivity : AppCompatActivity() {
                 // Ancho de Columnas
                 sheet.setColumnView(0, 6)
                 (1 until headers.size + colOffset).forEach { col ->
-                    sheet.setColumnView(col, 18)
+                    sheet.setColumnView(col, 12)
                 }
                 sheet.setColumnView(headers.size + colOffset, 6)
             }
