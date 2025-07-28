@@ -4,6 +4,9 @@ import android.content.Context
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
@@ -28,6 +31,15 @@ class ConfiguracionActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityConfiguracionBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // Habilita el modo Edge-to-Edge
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+// Aplica el relleno para las barras del sistema
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            insets
+        }
 
         setupRecyclerViews()
         cargarConfiguracion()

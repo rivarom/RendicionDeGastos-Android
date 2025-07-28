@@ -16,6 +16,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.bumptech.glide.Glide
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.ktx.firestore
@@ -58,8 +61,19 @@ class NuevoGastoActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         binding = ActivityNuevoGastoBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Habilita el modo Edge-to-Edge
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+// Aplica el relleno para las barras del sistema
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            insets
+        }
 
         viajeId = intent.getStringExtra(EXTRA_VIAJE_ID)
         idGastoAEditar = intent.getStringExtra(EXTRA_GASTO_ID)
