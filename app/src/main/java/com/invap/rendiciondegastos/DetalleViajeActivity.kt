@@ -349,7 +349,7 @@ class DetalleViajeActivity : AppCompatActivity() {
                         Label(
                             colEtiqueta,
                             filaAdelanto,
-                            "Recibido por Tesorería:",
+                            "Recibido por Tesorería: ",
                             boldFormat
                         )
                     )
