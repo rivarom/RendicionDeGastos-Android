@@ -134,7 +134,7 @@ class ConfiguracionActivity : AppCompatActivity() {
         val monedasPorDefecto = setOf("Pesos", "Dólar")
         val tiposGastoPorDefecto = setOf("Transporte", "Comida", "Alojamiento")
         // --- CAMBIOS AQUÍ ---
-        val formasPagoPorDefecto = setOf("Tarjeta de Débito Recargable::TDR", "Efectivo::EFE")
+        val formasPagoPorDefecto = setOf("Tarjeta de Débito Recargable::TDR", "Efectivo::EFE","Tarjeta de Crédito::TC")
         val imputacionesPorDefecto = setOf("00::00")
 
         // Cargar Monedas
