@@ -142,6 +142,10 @@ class DetalleViajeActivity : AppCompatActivity() {
             else -> super.onOptionsItemSelected(item)
         }
     }
+    private fun getCellAddress(col: Int, row: Int): String {
+        val colLetter = ('A' + col).toString()
+        return "$colLetter${row + 1}"
+    }
 
     private fun exportarAExcel() {
         if (listaDeGastos.isEmpty()) {
@@ -212,6 +216,14 @@ class DetalleViajeActivity : AppCompatActivity() {
             }
             val signatureBoxFormat = WritableCellFormat().apply {
                 setBorder(Border.ALL, BorderLineStyle.THIN)
+            }
+            val inputCellPesosFormat = WritableCellFormat(pesosAccountingFormat).apply {
+                setBackground(Colour.ICE_BLUE)
+                setBorder(Border.ALL, BorderLineStyle.MEDIUM)
+            }
+            val inputCellDolaresFormat = WritableCellFormat(dolaresAccountingFormat).apply {
+                setBackground(Colour.ICE_BLUE)
+                setBorder(Border.ALL, BorderLineStyle.MEDIUM)
             }
             val totalLabelBorderlessFormat = WritableCellFormat(boldFont)
 
@@ -325,26 +337,119 @@ class DetalleViajeActivity : AppCompatActivity() {
                 (headers.indexOf("Importe en Dólares") + 1 until headers.size).forEach { index ->
                     sheet.addCell(Label(index + colOffset, totalRowIndex, "", totalLabelBorderlessFormat))
                 }
-// --- NUEVA SECCIÓN: ADELANTO, CONSUMOS, SALDO ---
-                val filaAdelanto = totalRowIndex + 2 // Dejamos una fila en blanco
-                val colEtiqueta = headers.indexOf("Importe en Pesos") - 1 // Alineado a la izquierda de los importes
 
-                sheet.addCell(Label(colEtiqueta, filaAdelanto, "Recibido por Tesorería:", boldFormat))
-                sheet.addCell(Label(colPesosIndex, filaAdelanto, "", totalPesosFormat))
-                sheet.addCell(Label(colDolaresIndex, filaAdelanto, "", totalDolaresFormat))
+                if (!formaDePago.contains("Crédito", ignoreCase = true) && !formaDePago.contains("Credito", ignoreCase = true)) {
 
-                sheet.addCell(Label(colEtiqueta, filaAdelanto + 1, "Saldo del Adelanto:", boldFormat))
-                sheet.addCell(Label(colPesosIndex, filaAdelanto + 1, "", totalPesosFormat))
-                sheet.addCell(Label(colDolaresIndex, filaAdelanto + 1, "", totalPesosFormat))
+                    //--- NUEVA SECCIÓN: ADELANTO, CONSUMOS, SALDO (CORREGIDA) ---
+                    val filaAdelanto = totalRowIndex + 1 // Dejamos una fila en blanco
+                    val colEtiqueta =
+                        headers.indexOf("Importe en Pesos") - 1 // Alineado a la izquierda de los importes
+// Fila 1: Recibido por Tesorería
+                    sheet.addCell(
+                        Label(
+                            colEtiqueta,
+                            filaAdelanto,
+                            "Recibido por Tesorería:",
+                            boldFormat
+                        )
+                    )
+                    sheet.addCell(
+                        Label(
+                            colEtiqueta + 4,
+                            filaAdelanto,
+                            " Completar con el monto de adelanto recibido:",
+                            normalFormat
+                        )
+                    )
+                    val recibidoPesosCell =
+                        Number(colPesosIndex, filaAdelanto, 0.0, inputCellPesosFormat)
+                    sheet.addCell(recibidoPesosCell)
+                    val recibidoDolaresCell =
+                        Number(colDolaresIndex, filaAdelanto, 0.0, inputCellDolaresFormat)
+                    sheet.addCell(recibidoDolaresCell)
 
-                sheet.addCell(Label(colEtiqueta, filaAdelanto + 2, "A DEVOLVER:", boldFormat))
-                sheet.addCell(Label(colPesosIndex, filaAdelanto + 2, "", totalDolaresFormat))
-                sheet.addCell(Label(colDolaresIndex, filaAdelanto + 2, "", totalDolaresFormat))
+// Fila 2: Saldo del Anticipo
+                    sheet.addCell(
+                        Label(
+                            colEtiqueta,
+                            filaAdelanto + 1,
+                            "Saldo del Anticipo:",
+                            boldFormat
+                        )
+                    )
+                    sheet.addCell(
+                        Label(
+                            colEtiqueta + 4,
+                            filaAdelanto + 1,
+                            " Completar con lo que te quedó del Anticipo",
+                            normalFormat
+                        )
+                    )
+                    val saldoPesosCell =
+                        Number(colPesosIndex, filaAdelanto + 1, 0.0, inputCellPesosFormat)
+                    sheet.addCell(saldoPesosCell)
+                    val saldoDolaresCell =
+                        Number(colDolaresIndex, filaAdelanto + 1, 0.0, inputCellDolaresFormat)
+                    sheet.addCell(saldoDolaresCell)
 
-                sheet.addCell(Label(colEtiqueta, filaAdelanto + 3, "A RECUPERAR:", boldFormat))
-                sheet.addCell(Label(colPesosIndex, filaAdelanto + 3, "", totalDolaresFormat))
-                sheet.addCell(Label(colDolaresIndex, filaAdelanto + 3, "", totalDolaresFormat))
-
+// Fila 3: A DEVOLVER (con la fórmula que pediste)
+                    sheet.addCell(Label(colEtiqueta, filaAdelanto + 2, "A DEVOLVER:", boldFormat))
+// Obtenemos las direcciones de las celdas a sumar
+                    val totalPesosAddress = getCellAddress(colPesosIndex, totalRowIndex)
+                    val recibidoPesosAddress =
+                        getCellAddress(recibidoPesosCell.column, recibidoPesosCell.row)
+                    val saldoPesosAddress =
+                        getCellAddress(saldoPesosCell.column, saldoPesosCell.row)
+// Construimos la fórmula SIN el signo "="
+                    val formulaDevolverPesos =
+                        "0"//"Si((-${recibidoPesosAddress}+${totalPesosAddress}+${saldoPesosAddress})<0; -(-${recibidoPesosAddress}+${totalPesosAddress}+${saldoPesosAddress});0)"
+                    sheet.addCell(
+                        Formula(
+                            colPesosIndex,
+                            filaAdelanto + 2,
+                            formulaDevolverPesos,
+                            totalPesosFormat
+                        )
+                    )
+// ... y para dólares
+                    val totalDolaresAddress = getCellAddress(colDolaresIndex, totalRowIndex)
+                    val recibidoDolaresAddress =
+                        getCellAddress(recibidoDolaresCell.column, recibidoDolaresCell.row)
+                    val saldoDolaresAddress =
+                        getCellAddress(saldoDolaresCell.column, saldoDolaresCell.row)
+                    val formulaDevolverDolares =
+                        "0"//"${totalDolaresAddress}+${recibidoDolaresAddress}+${saldoDolaresAddress}"
+                    sheet.addCell(
+                        Formula(
+                            colDolaresIndex,
+                            filaAdelanto + 2,
+                            formulaDevolverDolares,
+                            totalDolaresFormat
+                        )
+                    )
+// Fila 4: A RECUPERAR
+                    val formulaRecuperarPesos =
+                        "0"//"Si((-${recibidoPesosAddress}+${totalPesosAddress}+${saldoPesosAddress})<0; -(-${recibidoPesosAddress}+${totalPesosAddress}+${saldoPesosAddress});0)"
+                    val formulaRecuperarDolares =
+                        "0"//"${totalDolaresAddress}+${recibidoDolaresAddress}+${saldoDolaresAddress}"
+                    sheet.addCell(Label(colEtiqueta, filaAdelanto + 3, "A RECUPERAR:", boldFormat))
+                    sheet.addCell(
+                        Formula(
+                            colDolaresIndex,
+                            filaAdelanto + 3,
+                            formulaRecuperarDolares,
+                            totalDolaresFormat
+                        )
+                    )
+                    sheet.addCell(
+                        Formula(
+                            colPesosIndex,
+                            filaAdelanto + 3,
+                            formulaRecuperarPesos,
+                            totalPesosFormat
+                        )
+                    )
+                }
                 // --- Pie de la Planilla ---
                 val filaPie = totalRowIndex + 7
                 sheet.setRowView(filaPie, 500); sheet.setRowView(filaPie + 2, 500)
