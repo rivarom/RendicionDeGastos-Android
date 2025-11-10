@@ -174,6 +174,13 @@ class NuevoGastoActivity : AppCompatActivity() {
 
         val prefijo = formaDePagoSeleccionada.prefijo
 
+        // Obtenemos el ID del usuario actual. Si no existe, no continuamos.
+        val userId = Firebase.auth.currentUser?.uid ?: run {
+            Toast.makeText(this, "Error: No se pudo obtener el ID de usuario.", Toast.LENGTH_SHORT).show()
+            binding.buttonGuardarGasto.isEnabled = true
+            return
+        }
+
         if (idGastoAEditar != null) {
             val tagExistente = intent.getStringExtra(EXTRA_GASTO_TAG) ?: ""
             if (fotoUri != null) {
@@ -185,6 +192,7 @@ class NuevoGastoActivity : AppCompatActivity() {
         }
 
         db.collection("gastos")
+            .whereEqualTo("userId", userId) // Ahora 'userId' está inicializado
             .whereEqualTo("viajeId", viajeId)
             .whereEqualTo("formaDePago", formaDePagoNombre)
             .get()
@@ -198,7 +206,8 @@ class NuevoGastoActivity : AppCompatActivity() {
                 }
             }
             .addOnFailureListener {
-                Toast.makeText(this, "Error al calcular el TAG", Toast.LENGTH_SHORT).show()
+                Log.e("TagError", "Error al consultar gastos para el TAG:", it)
+                Toast.makeText(this, "Error al calcular el TAG: ${it.message}", Toast.LENGTH_LONG).show()
                 binding.buttonGuardarGasto.isEnabled = true
             }
     }
