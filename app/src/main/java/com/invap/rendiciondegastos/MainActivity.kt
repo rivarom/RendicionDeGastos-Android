@@ -15,18 +15,21 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.firebase.auth.ktx.auth
-import com.google.firebase.firestore.ktx.firestore
-import com.google.firebase.ktx.Firebase
+// Se eliminan todas las importaciones de Firebase (excepto las que se eliminarán más adelante)
+// import com.google.firebase.firestore.ktx.firestore // Eliminado
+// import com.google.firebase.ktx.Firebase // Eliminado
 import com.invap.rendiciondegastos.databinding.ActivityMainBinding
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private val listaDeViajes: MutableList<Viaje> = mutableListOf()
     private lateinit var adapter: ViajesAdapter
-    private val db = Firebase.firestore
+    // private val db = Firebase.firestore // Reemplazado por Room
+    private lateinit var db: AppDatabase // Instancia de la base de datos Room
 
     private val nuevoViajeResultLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -38,13 +41,15 @@ class MainActivity : AppCompatActivity() {
             val monedaDefecto = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_MONEDA_DEFECTO)
             val imputacionPT = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_PT)
             val imputacionWP = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_WP)
-            val id = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_ID)
+
+            // Modificado: El ID ahora es Long. 0L significa que es un viaje nuevo.
+            val id = data?.getLongExtra(NuevoViajeActivity.EXTRA_VIAJE_ID, 0L)
 
             if (nombre != null && fecha != null && monedaDefecto != null && imputacionPT != null && imputacionWP != null) {
-                if (id == null) {
+                if (id == 0L) { // Modificado: se comprueba 0L en lugar de null
                     guardarNuevoViaje(nombre, fecha, monedaDefecto, imputacionPT, imputacionWP)
                 } else {
-                    actualizarViaje(id, nombre, fecha, monedaDefecto, imputacionPT, imputacionWP)
+                    actualizarViaje(id!!, nombre, fecha, monedaDefecto, imputacionPT, imputacionWP)
                 }
             }
         }
@@ -53,21 +58,19 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-
-        if (Firebase.auth.currentUser == null) {
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
-            return
-        }
+        // Lógica de autenticación ya eliminada en el paso 5
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
 
+        // Añadido: Inicializar la base de datos Room
+        db = AppDatabase.getInstance(applicationContext)
+
         // Habilita el modo Edge-to-Edge
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-// Aplica el relleno para las barras del sistema
+        // Aplica el relleno para las barras del sistema
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
@@ -78,6 +81,7 @@ class MainActivity : AppCompatActivity() {
             listaDeViajes,
             onItemClicked = { viaje: Viaje ->
                 val intent = Intent(this, DetalleViajeActivity::class.java)
+                // Modificado: Se pasa el ID como Long
                 intent.putExtra("EXTRA_VIAJE_ID", viaje.id)
                 intent.putExtra("EXTRA_VIAJE_NOMBRE", viaje.nombre)
                 intent.putExtra("EXTRA_VIAJE_MONEDA_DEFECTO", viaje.monedaPorDefecto)
@@ -101,14 +105,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (Firebase.auth.currentUser != null) {
-            verificarConfiguracionYContinuar()
-        }
+        // Lógica de autenticación ya eliminada
+        verificarConfiguracionYContinuar()
     }
 
     private fun verificarConfiguracionYContinuar() {
-        val userId = Firebase.auth.currentUser?.uid ?: return
-        val userPrefs = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
+        val userPrefs = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE)
         val configuracionCompleta = userPrefs.getBoolean("CONFIGURACION_COMPLETA", false)
 
         if (!configuracionCompleta) {
@@ -125,7 +127,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             // Si la configuración está completa, cargamos los viajes y mostramos el botón.
             binding.fabAgregarViaje.visibility = View.VISIBLE
-            cargarViajesDesdeFirestore()
+            cargarViajesLocales() // Modificado: Carga desde Room
         }
     }
 
@@ -140,14 +142,7 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this, ConfiguracionActivity::class.java))
                 true
             }
-            R.id.action_logout -> {
-                Firebase.auth.signOut()
-                val intent = Intent(this, LoginActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                startActivity(intent)
-                finish()
-                true
-            }
+            // Lógica de Logout ya eliminada
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -161,7 +156,7 @@ class MainActivity : AppCompatActivity() {
                 when (which) {
                     0 -> { // Ver Gastos
                         val intent = Intent(this, DetalleViajeActivity::class.java)
-                        intent.putExtra("EXTRA_VIAJE_ID", viaje.id)
+                        intent.putExtra("EXTRA_VIAJE_ID", viaje.id) // Pasa Long
                         intent.putExtra("EXTRA_VIAJE_NOMBRE", viaje.nombre)
                         intent.putExtra("EXTRA_VIAJE_MONEDA_DEFECTO", viaje.monedaPorDefecto)
                         intent.putExtra("EXTRA_VIAJE_IMPUTACION_PT", viaje.imputacionPorDefectoPT)
@@ -170,7 +165,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     1 -> { // Editar Viaje
                         val intent = Intent(this, NuevoViajeActivity::class.java)
-                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_ID, viaje.id)
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_ID, viaje.id) // Pasa Long
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_NOMBRE, viaje.nombre)
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA, viaje.fecha)
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_MONEDA_DEFECTO, viaje.monedaPorDefecto)
@@ -198,83 +193,95 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun eliminarViaje(viaje: Viaje) {
-        if (viaje.id.isEmpty()) {
-            Toast.makeText(this, "Error: ID del viaje no encontrado", Toast.LENGTH_SHORT).show()
-            return
+        // Modificado: Lógica de Room en una coroutine
+        lifecycleScope.launch {
+            try {
+                db.viajeDao().deleteViaje(viaje)
+                Toast.makeText(this@MainActivity, "Viaje eliminado", Toast.LENGTH_SHORT).show()
+                cargarViajesLocales() // Recarga la lista
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error al eliminar el viaje", e)
+                Toast.makeText(this@MainActivity, "Error al eliminar el viaje", Toast.LENGTH_SHORT).show()
+            }
         }
-        db.collection("viajes").document(viaje.id)
-            .delete()
-            .addOnSuccessListener {
-                Toast.makeText(this, "Viaje eliminado", Toast.LENGTH_SHORT).show()
-                cargarViajesDesdeFirestore()
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Error al eliminar el viaje", Toast.LENGTH_SHORT).show()
-            }
     }
 
-    private fun cargarViajesDesdeFirestore() {
-        val userId = Firebase.auth.currentUser?.uid ?: return
-        db.collection("viajes")
-            .whereEqualTo("userId", userId)
-            .get()
-            .addOnSuccessListener { result ->
+    private fun cargarViajesLocales() {
+        // Modificado: Lógica de Room en una coroutine
+        lifecycleScope.launch {
+            try {
+                val viajes = db.viajeDao().getAllViajes()
                 listaDeViajes.clear()
-                for (document in result) {
-                    val viaje = document.toObject(Viaje::class.java)
-                    viaje.id = document.id
-                    listaDeViajes.add(viaje)
-                }
+                listaDeViajes.addAll(viajes)
                 adapter.notifyDataSetChanged()
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error al cargar viajes locales", e)
+                Toast.makeText(this@MainActivity, "Error al cargar los viajes.", Toast.LENGTH_SHORT).show()
             }
-            .addOnFailureListener { exception ->
-                Toast.makeText(this, "Error al cargar los viajes.", Toast.LENGTH_SHORT).show()
-            }
+        }
     }
 
     private fun guardarNuevoViaje(nombre: String, fecha: String, monedaDefecto: String, imputacionPT: String, imputacionWP: String) {
-        val userId = Firebase.auth.currentUser?.uid ?: return
-        val sharedPref = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
+        val sharedPref = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
         val centroCostos = sharedPref.getString("CENTRO_COSTOS", "") ?: ""
 
-        val nuevoViaje = hashMapOf(
-            "nombre" to nombre, "fecha" to fecha, "monedaPorDefecto" to monedaDefecto,
-            "imputacionPorDefectoPT" to imputacionPT, "imputacionPorDefectoWP" to imputacionWP,
-            "nombrePersona" to nombrePersona, "legajo" to legajo, "centroCostos" to centroCostos,
-            "userId" to userId
+        // Modificado: Se crea un objeto Viaje
+        val nuevoViaje = Viaje(
+            nombre = nombre,
+            fecha = fecha,
+            monedaPorDefecto = monedaDefecto,
+            imputacionPorDefectoPT = imputacionPT,
+            imputacionPorDefectoWP = imputacionWP,
+            nombrePersona = nombrePersona,
+            legajo = legajo,
+            centroCostos = centroCostos
+            // El ID es 0 por defecto, Room lo autogenerará
         )
-        db.collection("viajes").add(nuevoViaje)
-            .addOnSuccessListener {
-                Toast.makeText(this, "Viaje guardado", Toast.LENGTH_SHORT).show()
-                // No es necesario llamar a cargarViajes aquí, onResume lo hará
+
+        // Modificado: Lógica de Room en una coroutine
+        lifecycleScope.launch {
+            try {
+                db.viajeDao().insertViaje(nuevoViaje)
+                Toast.makeText(this@MainActivity, "Viaje guardado", Toast.LENGTH_SHORT).show()
+                cargarViajesLocales() // Recarga la lista
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error al guardar el viaje", e)
+                Toast.makeText(this@MainActivity, "Error al guardar el viaje", Toast.LENGTH_SHORT).show()
             }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Error al guardar el viaje", Toast.LENGTH_SHORT).show()
-            }
+        }
     }
 
-    private fun actualizarViaje(id: String, nombre: String, fecha: String, monedaDefecto: String, imputacionPT: String, imputacionWP: String) {
-        val userId = Firebase.auth.currentUser?.uid ?: return
-        val sharedPref = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
+    private fun actualizarViaje(id: Long, nombre: String, fecha: String, monedaDefecto: String, imputacionPT: String, imputacionWP: String) {
+        val sharedPref = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
         val centroCostos = sharedPref.getString("CENTRO_COSTOS", "") ?: ""
 
-        val viajeActualizado = hashMapOf(
-            "nombre" to nombre, "fecha" to fecha, "monedaPorDefecto" to monedaDefecto,
-            "imputacionPorDefectoPT" to imputacionPT, "imputacionPorDefectoWP" to imputacionWP,
-            "nombrePersona" to nombrePersona, "legajo" to legajo, "centroCostos" to centroCostos,
-            "userId" to userId
+        // Modificado: Se crea un objeto Viaje con el ID existente
+        val viajeActualizado = Viaje(
+            id = id, // Se pasa el ID para la actualización
+            nombre = nombre,
+            fecha = fecha,
+            monedaPorDefecto = monedaDefecto,
+            imputacionPorDefectoPT = imputacionPT,
+            imputacionPorDefectoWP = imputacionWP,
+            nombrePersona = nombrePersona,
+            legajo = legajo,
+            centroCostos = centroCostos
         )
-        db.collection("viajes").document(id).set(viajeActualizado)
-            .addOnSuccessListener {
-                Toast.makeText(this, "Viaje actualizado", Toast.LENGTH_SHORT).show()
-                // No es necesario llamar a cargarViajes aquí, onResume lo hará
+
+        // Modificado: Lógica de Room en una coroutine
+        lifecycleScope.launch {
+            try {
+                db.viajeDao().updateViaje(viajeActualizado)
+                Toast.makeText(this@MainActivity, "Viaje actualizado", Toast.LENGTH_SHORT).show()
+                cargarViajesLocales() // Recarga la lista
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error al actualizar el viaje", e)
+                Toast.makeText(this@MainActivity, "Error al actualizar el viaje", Toast.LENGTH_SHORT).show()
             }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Error al actualizar el viaje", Toast.LENGTH_SHORT).show()
-            }
+        }
     }
 }

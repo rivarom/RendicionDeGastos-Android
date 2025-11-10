@@ -5,7 +5,6 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Bundle
@@ -25,9 +24,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.bumptech.glide.Glide
-import com.google.firebase.auth.ktx.auth
-import com.google.firebase.firestore.ktx.firestore
-import com.google.firebase.ktx.Firebase
+// import com.google.firebase.auth.ktx.auth // Eliminado
+// import com.google.firebase.firestore.ktx.firestore // Eliminado
+// import com.google.firebase.ktx.Firebase // Eliminado
 import com.invap.rendiciondegastos.databinding.ActivityDetalleViajeBinding
 import jxl.CellView
 import jxl.SheetSettings
@@ -50,15 +49,18 @@ import java.util.*
 class DetalleViajeActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityDetalleViajeBinding
-    private var viajeId: String? = null
+    private var viajeId: Long = 0L // Modificado: de String a Long
     private var nombreViaje: String? = null
     private var monedaPorDefecto: String? = null
     private var imputacionPtPorDefecto: String? = null
     private var imputacionWpPorDefecto: String? = null
 
-    private val db = Firebase.firestore
+    // private val db = Firebase.firestore // Reemplazado por Room
+    private lateinit var db: AppDatabase // Instancia de la base de datos Room
     private val listaDeGastos = mutableListOf<Gasto>()
-    private val listaDeViajes = mutableListOf<Viaje>()
+
+    // Modificado: Almacenará solo el viaje actual, no todos.
+    private var viajeActual: Viaje? = null
     private lateinit var adapter: GastosAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,17 +69,28 @@ class DetalleViajeActivity : AppCompatActivity() {
         binding = ActivityDetalleViajeBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbarDetalle)
+
+        // Añadido: Inicializar la base de datos Room
+        db = AppDatabase.getInstance(applicationContext)
+
         // Habilita el modo Edge-to-Edge
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-// Aplica el relleno para las barras del sistema
+        // Aplica el relleno para las barras del sistema
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
 
-        viajeId = intent.getStringExtra("EXTRA_VIAJE_ID")
+        // Modificado: Se obtiene el ID como Long, con 0L como valor por defecto.
+        viajeId = intent.getLongExtra("EXTRA_VIAJE_ID", 0L)
+        if (viajeId == 0L) {
+            Toast.makeText(this, "Error: ID de viaje no válido", Toast.LENGTH_SHORT).show()
+            finish() // Cierra la actividad si no hay ID
+            return
+        }
+
         nombreViaje = intent.getStringExtra("EXTRA_VIAJE_NOMBRE")
         monedaPorDefecto = intent.getStringExtra("EXTRA_VIAJE_MONEDA_DEFECTO")
         imputacionPtPorDefecto = intent.getStringExtra("EXTRA_VIAJE_IMPUTACION_PT")
@@ -89,8 +102,22 @@ class DetalleViajeActivity : AppCompatActivity() {
         adapter = GastosAdapter(
             listaDeGastos,
             onItemClicked = { gasto ->
+                // Modificado: Lógica para ver foto local con FileProvider
                 if (gasto.urlFotoRecibo.isNotEmpty()) {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(gasto.urlFotoRecibo)))
+                    try {
+                        val file = File(gasto.urlFotoRecibo)
+                        val uri = FileProvider.getUriForFile(this, "com.invap.rendiciondegastos.fileprovider", file)
+                        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "image/jpeg")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        startActivity(viewIntent)
+                    } catch (e: Exception) {
+                        Toast.makeText(this, "No se puede abrir el recibo", Toast.LENGTH_SHORT).show()
+                        Log.e("DetalleViajeActivity", "Error al abrir foto local", e)
+                    }
+                } else {
+                    Toast.makeText(this, "Este gasto no tiene recibo", Toast.LENGTH_SHORT).show()
                 }
             },
             onItemLongClicked = { gasto ->
@@ -102,7 +129,7 @@ class DetalleViajeActivity : AppCompatActivity() {
 
         binding.fabAgregarGasto.setOnClickListener {
             val intent = Intent(this, NuevoGastoActivity::class.java)
-            intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_ID, viajeId)
+            intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_ID, viajeId) // Pasa Long
             intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_MONEDA_DEFECTO, monedaPorDefecto)
             intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_IMPUTACION_PT, imputacionPtPorDefecto)
             intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_IMPUTACION_WP, imputacionWpPorDefecto)
@@ -112,30 +139,37 @@ class DetalleViajeActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (viajeId != null) {
+        if (viajeId != 0L) { // Comprueba si el ID es válido
             cargarDatos()
         }
     }
 
+    // Modificado: Carga el viaje actual y sus gastos desde Room
     private fun cargarDatos() {
-        cargarViajeActual()
-        cargarGastos()
+        lifecycleScope.launch {
+            try {
+                // Carga el viaje actual (necesario para el exportar a Excel)
+                viajeActual = db.viajeDao().getViajeById(viajeId)
+                if (viajeActual == null) {
+                    Toast.makeText(this@DetalleViajeActivity, "Error: No se encontró el viaje", Toast.LENGTH_SHORT).show()
+                    finish()
+                    return@launch
+                }
+
+                // Carga los gastos asociados
+                val gastos = db.gastoDao().getGastosByViajeId(viajeId)
+                listaDeGastos.clear()
+                listaDeGastos.addAll(gastos)
+                adapter.notifyDataSetChanged()
+
+            } catch (e: Exception) {
+                Log.e("DetalleViajeActivity", "Error al cargar datos de Room", e)
+                Toast.makeText(this@DetalleViajeActivity, "Error al cargar datos", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
-    private fun cargarViajeActual() {
-        val userId = Firebase.auth.currentUser?.uid ?: return
-        db.collection("viajes")
-            .whereEqualTo("userId", userId)
-            .get()
-            .addOnSuccessListener { result ->
-                listaDeViajes.clear()
-                for (document in result) {
-                    val viaje = document.toObject(Viaje::class.java)
-                    viaje.id = document.id
-                    listaDeViajes.add(viaje)
-                }
-            }
-    }
+    // Eliminado: cargarViajeActual() (lógica movida a cargarDatos())
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.detalle_viaje_menu, menu)
@@ -166,18 +200,23 @@ class DetalleViajeActivity : AppCompatActivity() {
             return
         }
 
+        if (viajeActual == null) {
+            Toast.makeText(this, "Error: Datos del viaje no cargados", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         val fileName = "INVAP - Rendicion_${nombreViaje?.replace(" ", "_")}.xls"
         val file = File(externalCacheDir, fileName)
 
         try {
-            val userId = Firebase.auth.currentUser?.uid ?: return
-            val userPrefs = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
+            // Modificado: Carga desde "UserPrefs_local"
+            val userPrefs = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE)
             val tiposDeGastoConfigurados = userPrefs.getStringSet("TIPOS_GASTO", emptySet())?.toList()?.sorted() ?: emptyList()
 
             val gastosAgrupados = listaDeGastos.groupBy { it.formaDePago }
             val workbook: WritableWorkbook = Workbook.createWorkbook(file)
 
-            // --- Definición de Formatos ---
+            // --- Definición de Formatos --- (Sin cambios)
             val tituloFont = WritableFont(WritableFont.ARIAL, 28, WritableFont.BOLD)
             tituloFont.setColour(Colour.GREEN)
             val tituloFormat = WritableCellFormat(tituloFont)
@@ -201,23 +240,12 @@ class DetalleViajeActivity : AppCompatActivity() {
                 setBorder(Border.ALL, BorderLineStyle.THIN)
                 setAlignment(Alignment.CENTRE)
             }
-            // Formatos de número específicos para cada moneda
             val pesosAccountingFormat = jxl.write.NumberFormat("$ #,##0.00")
             val dolaresAccountingFormat = jxl.write.NumberFormat(" #,##0.00")
-
-// Formatos de celda para la tabla de
             val accountingFormat = jxl.write.NumberFormat("#,##0.00")
             val tableNumberCellFormat = WritableCellFormat(accountingFormat).apply {
                 setBorder(Border.ALL, BorderLineStyle.THIN)
             }
-            val tablePesosCellFormat = WritableCellFormat(pesosAccountingFormat).apply {
-                setBorder(Border.ALL, BorderLineStyle.THIN)
-            }
-            val tableDolaresCellFormat = WritableCellFormat(dolaresAccountingFormat).apply {
-                setBorder(Border.ALL, BorderLineStyle.THIN)
-            }
-
-// Formatos de celda para la fila de totales
             val totalPesosFormat = WritableCellFormat(boldFont, pesosAccountingFormat).apply {
                 setBorder(Border.ALL, BorderLineStyle.MEDIUM)
             }
@@ -239,6 +267,7 @@ class DetalleViajeActivity : AppCompatActivity() {
                 setBorder(Border.ALL, BorderLineStyle.MEDIUM)
             }
             val totalLabelBorderlessFormat = WritableCellFormat(boldFont)
+            // --- Fin de Formatos ---
 
             gastosAgrupados.forEach { (formaDePago, gastosDelGrupo) ->
                 val nombreHoja = formaDePago.replace(Regex("[^A-Za-z0-9]"), "").take(30)
@@ -250,7 +279,7 @@ class DetalleViajeActivity : AppCompatActivity() {
 
                 // --- Cabecera de la Planilla ---
                 val primerGasto = gastosDelGrupo.first()
-                val viajeActual = listaDeViajes.find { it.id == viajeId }
+                // val viajeActual = listaDeViajes.find { it.id == viajeId } // Ya no se usa, usamos la variable 'viajeActual'
                 sheet.setRowView(5, 900)
                 sheet.addCell(Label(1, 5, "INVAP - Rendición de Viajes", tituloFormat))
                 sheet.addCell(Label(1, 1, "Plazos para la rendición:", boldFormat14))
@@ -264,44 +293,36 @@ class DetalleViajeActivity : AppCompatActivity() {
                 sheet.addCell(Label(1, 11, "Viaje:", normalFormat))
                 sheet.addCell(Label(2, 11, nombreViaje, boldFormat))
                 sheet.addCell(Label(1, 12, "Fecha:", normalFormat))
-                sheet.addCell(Label(2, 12, viajeActual?.fecha, boldFormat))
+                sheet.addCell(Label(2, 12, viajeActual?.fecha, boldFormat)) // Modificado: usa variable de clase
                 sheet.addCell(Label(6, 11, "N° de Legajo:", normalFormat))
                 sheet.addCell(Label(7, 11, "${primerGasto.legajo}", boldFormat))
                 sheet.addCell(Label(6, 12, "CC:", normalFormat))
                 sheet.addCell(Label(7, 12, "${primerGasto.centroCostos} ", boldFormat))
 
-                // --- Tabla de Gastos ---
+                // --- Tabla de Gastos --- (Lógica sin cambios)
                 val filaInicioTabla = 14
                 val colOffset = 1
                 sheet.setRowView(filaInicioTabla, 1050, false)
-
                 val headers = mutableListOf("Comprobante")
                 headers.addAll(tiposDeGastoConfigurados)
                 headers.addAll(listOf("Moneda", "Importe en Pesos", "Importe en Dólares", "CC", "PT", "WP"))
-
                 headers.forEachIndexed { index, header ->
                     sheet.addCell(Label(index + colOffset, filaInicioTabla, header, thickHeaderFormat))
                 }
-
-
                 val totalesPorTipoGasto = DoubleArray(tiposDeGastoConfigurados.size) { 0.0 }
-
                 gastosDelGrupo.forEachIndexed { rowIndex, gasto ->
                     val row = filaInicioTabla + 1 + rowIndex
                     sheet.addCell(Label(0 + colOffset, row, gasto.tagGasto, tableCellCenterFormat))
-
                     val columnaGastoIndex = tiposDeGastoConfigurados.indexOf(gasto.tipoGasto)
                     if (columnaGastoIndex != -1) {
                         sheet.addCell(Number(columnaGastoIndex + 1 + colOffset, row, gasto.monto, tableNumberCellFormat))
                         totalesPorTipoGasto[columnaGastoIndex] += gasto.monto
                     }
-
                     (1..tiposDeGastoConfigurados.size).forEach { colIdx ->
                         if (colIdx != columnaGastoIndex + 1) {
                             sheet.addCell(Label(colIdx + colOffset, row, "", tableCellFormat))
                         }
                     }
-
                     val colMoneda = headers.indexOf("Moneda") + colOffset
                     val colPesos = headers.indexOf("Importe en Pesos") + colOffset
                     val colDolares = headers.indexOf("Importe en Dólares") + colOffset
@@ -316,16 +337,14 @@ class DetalleViajeActivity : AppCompatActivity() {
                         sheet.addCell(Label(colPesos, row, "", tableCellFormat))
                         sheet.addCell(Label(colDolares, row, "", tableCellFormat))
                     }
-
                     sheet.addCell(Label(headers.indexOf("CC") + colOffset, row, gasto.centroCostos, tableCellCenterFormat))
                     sheet.addCell(Label(headers.indexOf("PT") + colOffset, row, gasto.imputacionPT, tableCellCenterFormat))
                     sheet.addCell(Label(headers.indexOf("WP") + colOffset, row, gasto.imputacionWP, tableCellCenterFormat))
                 }
-// Fila de Totales
+
+                // --- Fila de Totales --- (Lógica sin cambios)
                 val totalRowIndex = filaInicioTabla + 1 + gastosDelGrupo.size
-// La celda "TOTALES" sí tiene borde
                 sheet.addCell(Label(0 + colOffset, totalRowIndex, "TOTALES", totalLabelFormat))
-// Las celdas vacías debajo de los tipos de gasto usan el nuevo formato SIN borde
                 (1..tiposDeGastoConfigurados.size).forEach { colIdx ->
                     sheet.addCell(Label(colIdx + colOffset, totalRowIndex, "", totalLabelBorderlessFormat))
                 }
@@ -333,53 +352,39 @@ class DetalleViajeActivity : AppCompatActivity() {
                 val colDolaresIndex = headers.indexOf("Importe en Dólares") + colOffset
                 val primeraFilaDatos = filaInicioTabla + 2
                 val ultimaFilaDatos = totalRowIndex
-
-// Las celdas con las fórmulas de suma SÍ tienen borde
                 val colPesosLetra = ('A' + colPesosIndex)
                 val formulaPesos = "SUMA(${colPesosLetra}$primeraFilaDatos:${colPesosLetra}$ultimaFilaDatos)"
                 sheet.addCell(Formula(colPesosIndex, totalRowIndex, formulaPesos, totalPesosFormat))
-
                 val colDolaresLetra = ('A' + colDolaresIndex)
                 val formulaDolares = "SUMA(${colDolaresLetra}$primeraFilaDatos:${colDolaresLetra}$ultimaFilaDatos)"
                 sheet.addCell(Formula(colDolaresIndex, totalRowIndex, formulaDolares, totalDolaresFormat))
-
-// Las celdas vacías después de los totales usan el nuevo formato SIN borde
                 (headers.indexOf("Importe en Dólares") + 1 until headers.size).forEach { index ->
                     sheet.addCell(Label(index + colOffset, totalRowIndex, "", totalLabelBorderlessFormat))
                 }
-// En las tarjetas de credito no va la parte de Adelanto y a recuperar
+
+                // --- Adelanto/Saldo --- (Lógica sin cambios)
                 if (!formaDePago.contains("Crédito", ignoreCase = true) && !formaDePago.contains("Credito", ignoreCase = true)) {
-                    //--- ADELANTO, CONSUMOS, SALDO
-                    val filaAdelanto = totalRowIndex + 1 // Dejamos una fila en blanco
-                    val colEtiqueta = headers.indexOf("Importe en Pesos") - 1 // Alineado a la izquierda de los importes
-// Fila 1: Recibido por Tesorería
+                    val filaAdelanto = totalRowIndex + 1
+                    val colEtiqueta = headers.indexOf("Importe en Pesos") - 1
                     sheet.addCell(Label(colEtiqueta, filaAdelanto, "Recibido por Tesorería: ", boldFormat))
                     sheet.addCell(Label(colEtiqueta + 4, filaAdelanto, " Completar con el monto de adelanto recibido", normalFormat))
                     val recibidoPesosCell = Number(colPesosIndex, filaAdelanto, 0.0, inputCellPesosFormat)
                     sheet.addCell(recibidoPesosCell)
                     val recibidoDolaresCell = Number(colDolaresIndex, filaAdelanto, 0.0, inputCellDolaresFormat)
                     sheet.addCell(recibidoDolaresCell)
-
-// Fila 2: Saldo del Anticipo
                     sheet.addCell(Label(colEtiqueta, filaAdelanto + 1, "Saldo del Anticipo:", boldFormat))
                     sheet.addCell(Label(colEtiqueta + 4, filaAdelanto + 1, " Completar con lo que te quedó del anticipo", normalFormat))
-                    val saldoPesosCell =
-                        Number(colPesosIndex, filaAdelanto + 1, 0.0, inputCellPesosFormat)
+                    val saldoPesosCell = Number(colPesosIndex, filaAdelanto + 1, 0.0, inputCellPesosFormat)
                     sheet.addCell(saldoPesosCell)
-                    val saldoDolaresCell =
-                        Number(colDolaresIndex, filaAdelanto + 1, 0.0, inputCellDolaresFormat)
+                    val saldoDolaresCell = Number(colDolaresIndex, filaAdelanto + 1, 0.0, inputCellDolaresFormat)
                     sheet.addCell(saldoDolaresCell)
-// Fila 3: A DEVOLVER O RECUPERAR
                     sheet.addCell(Label(colEtiqueta, filaAdelanto + 2, "A DEVOLVER/RECUPERAR:", boldFormat))
                     sheet.addCell(Label(colEtiqueta + 4, filaAdelanto + 2, " Valor Negativo->Devolver/Positivo->Recuperar", normalFormat))
-// Obtenemos las direcciones de las celdas a sumar
                     val totalPesosAddress = getCellAddress(colPesosIndex, totalRowIndex)
                     val recibidoPesosAddress = getCellAddress(recibidoPesosCell.column, recibidoPesosCell.row)
                     val saldoPesosAddress = getCellAddress(saldoPesosCell.column, saldoPesosCell.row)
-// Construimos la fórmula SIN el signo "="
                     val formulaDevolverPesos = "-${recibidoPesosAddress}+${totalPesosAddress}+${saldoPesosAddress}"
                     sheet.addCell(Formula(colPesosIndex, filaAdelanto + 2, formulaDevolverPesos, totalPesosFormat))
-// ... y para dólares
                     val totalDolaresAddress = getCellAddress(colDolaresIndex, totalRowIndex)
                     val recibidoDolaresAddress = getCellAddress(recibidoDolaresCell.column, recibidoDolaresCell.row)
                     val saldoDolaresAddress = getCellAddress(saldoDolaresCell.column, saldoDolaresCell.row)
@@ -390,7 +395,8 @@ class DetalleViajeActivity : AppCompatActivity() {
                     sheet.addCell(Label(1, totalRowIndex + 2, " NOTA: En la columna Importe en Dólares, completar a mano los importes en dólares de los gastos en monedas extranjera (no dólar),", boldFormat))
                     sheet.addCell(Label(1, totalRowIndex + 3, "            sacando los datos del resumen de la Tarjeta de Crédito", boldFormat))
                 }
-                // --- Pie de la Planilla ---
+
+                // --- Pie de la Planilla --- (Lógica sin cambios)
                 val filaPie = totalRowIndex + 5
                 sheet.setRowView(filaPie, 500); sheet.setRowView(filaPie + 2, 500)
                 sheet.addCell(Label(1, filaPie, "Autorizó")); sheet.mergeCells(2, filaPie, 3, filaPie); sheet.addCell(Label(2, filaPie, "", signatureBoxFormat))
@@ -443,22 +449,27 @@ class DetalleViajeActivity : AppCompatActivity() {
             try {
                 val bitmapsDescargados = mutableMapOf<Gasto, Bitmap>()
                 for (gasto in gastosConReciboUrl) {
-                    val bitmap = Glide.with(this@DetalleViajeActivity).asBitmap().load(gasto.urlFotoRecibo).submit().get()
+                    // Modificado: Carga la imagen desde un archivo local (File) en lugar de una URL
+                    val bitmap = Glide.with(this@DetalleViajeActivity).asBitmap()
+                        .load(File(gasto.urlFotoRecibo)) // Carga desde un archivo
+                        .submit()
+                        .get()
                     bitmapsDescargados[gasto] = bitmap
                 }
                 withContext(Dispatchers.Main) {
                     crearDocumentoPDF(gastosOrdenados, bitmapsDescargados)
                 }
             } catch (e: Exception) {
-                Log.e("ExportarPDF", "Error al descargar imágenes", e)
+                Log.e("ExportarPDF", "Error al cargar imágenes locales", e)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@DetalleViajeActivity, "Error al descargar recibos", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@DetalleViajeActivity, "Error al cargar recibos locales", Toast.LENGTH_LONG).show()
                     binding.progressBarPDF.visibility = View.GONE
                 }
             }
         }
     }
 
+    // --- crearDocumentoPDF y dibujarPieDePagina (Sin cambios en su lógica interna) ---
     private fun crearDocumentoPDF(gastos: List<Gasto>, bitmaps: Map<Gasto, Bitmap>) {
         val pdfDocument = PdfDocument()
         val pageWidth = 842
@@ -569,20 +580,32 @@ class DetalleViajeActivity : AppCompatActivity() {
     private fun mostrarDialogoDeAcciones(gasto: Gasto) {
         val opciones = arrayOf("Ver Recibo", "Editar Gasto", "Eliminar Gasto")
         AlertDialog.Builder(this)
-            .setTitle(gasto.descripcion)
+            .setTitle(gasto.descripcion.ifEmpty { "(Gasto sin descripción)" }) // Evita título vacío
             .setItems(opciones) { _, which ->
                 when (which) {
                     0 -> {
+                        // Modificado: Lógica para ver foto local (duplicada de onItemClicked)
                         if (gasto.urlFotoRecibo.isNotEmpty()) {
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(gasto.urlFotoRecibo)))
+                            try {
+                                val file = File(gasto.urlFotoRecibo)
+                                val uri = FileProvider.getUriForFile(this, "com.invap.rendiciondegastos.fileprovider", file)
+                                val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, "image/jpeg")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                startActivity(viewIntent)
+                            } catch (e: Exception) {
+                                Toast.makeText(this, "No se puede abrir el recibo", Toast.LENGTH_SHORT).show()
+                                Log.e("DetalleViajeActivity", "Error al abrir foto local", e)
+                            }
                         } else {
                             Toast.makeText(this, "Este gasto no tiene un recibo adjunto", Toast.LENGTH_SHORT).show()
                         }
                     }
                     1 -> {
                         val intent = Intent(this, NuevoGastoActivity::class.java)
-                        intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_ID, viajeId)
-                        intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_ID, gasto.id)
+                        intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_ID, viajeId) // Pasa Long
+                        intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_ID, gasto.id) // Pasa Long
                         intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_DESCRIPCION, gasto.descripcion)
                         intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_MONTO, gasto.monto)
                         intent.putExtra(NuevoGastoActivity.EXTRA_GASTO_FECHA, gasto.fecha)
@@ -615,41 +638,28 @@ class DetalleViajeActivity : AppCompatActivity() {
     }
 
     private fun eliminarGasto(gasto: Gasto) {
-        if (gasto.id.isEmpty()) {
-            Toast.makeText(this, "Error: ID del gasto no encontrado", Toast.LENGTH_SHORT).show()
-            return
+        // Modificado: Lógica de Room en una coroutine
+        // La comprobación de ID vacío ya no es necesaria
+        lifecycleScope.launch {
+            try {
+                // Primero, elimina el archivo de la foto si existe
+                if (gasto.urlFotoRecibo.isNotEmpty()) {
+                    try {
+                        File(gasto.urlFotoRecibo).delete()
+                    } catch (e: Exception) {
+                        Log.e("DetalleViajeActivity", "No se pudo eliminar el archivo de la foto", e)
+                    }
+                }
+                // Luego, elimina el gasto de la base de datos
+                db.gastoDao().deleteGasto(gasto)
+                Toast.makeText(this@DetalleViajeActivity, "Gasto eliminado", Toast.LENGTH_SHORT).show()
+                cargarDatos() // Recarga la lista
+            } catch (e: Exception) {
+                Log.e("DetalleViajeActivity", "Error al eliminar el gasto de Room", e)
+                Toast.makeText(this@DetalleViajeActivity, "Error al eliminar el gasto", Toast.LENGTH_SHORT).show()
+            }
         }
-        db.collection("gastos").document(gasto.id)
-            .delete()
-            .addOnSuccessListener {
-                Toast.makeText(this, "Gasto eliminado", Toast.LENGTH_SHORT).show()
-                cargarGastos()
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Error al eliminar el gasto", Toast.LENGTH_SHORT).show()
-            }
     }
 
-    private fun cargarGastos() {
-        val userId = Firebase.auth.currentUser?.uid
-        if (userId == null || viajeId == null) return
-        db.collection("gastos")
-            .whereEqualTo("viajeId", viajeId)
-            .whereEqualTo("userId", userId)
-            .orderBy("timestamp")
-            .get()
-            .addOnSuccessListener { result ->
-                listaDeGastos.clear()
-                for (document in result) {
-                    val gasto = document.toObject(Gasto::class.java)
-                    gasto.id = document.id
-                    listaDeGastos.add(gasto)
-                }
-                adapter.notifyDataSetChanged()
-            }
-            .addOnFailureListener { exception ->
-                Log.w("DetalleViajeActivity", "Error al cargar gastos.", exception)
-                Toast.makeText(this, "Error al cargar gastos.", Toast.LENGTH_SHORT).show()
-            }
-    }
+    // Eliminado: cargarGastos() (lógica movida a cargarDatos())
 }

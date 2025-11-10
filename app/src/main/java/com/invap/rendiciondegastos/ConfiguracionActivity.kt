@@ -8,8 +8,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.firebase.auth.ktx.auth
-import com.google.firebase.ktx.Firebase
+// import com.google.firebase.auth.ktx.auth // Eliminado
+// import com.google.firebase.ktx.Firebase // Eliminado
 import com.invap.rendiciondegastos.databinding.ActivityConfiguracionBinding
 import com.invap.rendiciondegastos.Imputacion
 
@@ -135,8 +135,8 @@ class ConfiguracionActivity : AppCompatActivity() {
     }
 
     private fun cargarConfiguracion() {
-        val userId = Firebase.auth.currentUser?.uid ?: return
-        val userPrefs = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
+        // val userId = Firebase.auth.currentUser?.uid ?: return // Eliminado
+        val userPrefs = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE) // Modificado
 
         binding.editTextNombrePersona.setText(userPrefs.getString("NOMBRE_PERSONA", ""))
         binding.editTextLegajo.setText(userPrefs.getString("LEGAJO", ""))
@@ -185,8 +185,8 @@ class ConfiguracionActivity : AppCompatActivity() {
     }
 
     private fun guardarConfiguracion() {
-        val userId = Firebase.auth.currentUser?.uid ?: return
-        val userPrefs = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
+        // val userId = Firebase.auth.currentUser?.uid ?: return // Eliminado
+        val userPrefs = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE) // Modificado
 
         val formasPagoAGuardar = formasPagoList.map { "${it.nombre}::${it.prefijo}" }.toSet()
         val imputacionesAGuardar = imputacionesList.map { "${it.pt}::${it.wp}" }.toSet()

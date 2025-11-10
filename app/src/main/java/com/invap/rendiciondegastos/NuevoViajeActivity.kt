@@ -13,8 +13,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import com.google.firebase.auth.ktx.auth
-import com.google.firebase.ktx.Firebase
+// import com.google.firebase.auth.ktx.auth // Eliminado
+// import com.google.firebase.ktx.Firebase // Eliminado
 import com.invap.rendiciondegastos.databinding.ActivityNuevoViajeBinding
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -23,12 +23,13 @@ import java.util.Locale
 class NuevoViajeActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityNuevoViajeBinding
-    private var idViajeAEditar: String? = null
+    // Modificado: El ID ahora es Long. 0L (cero) significa que es un viaje nuevo.
+    private var idViajeAEditar: Long = 0L
     private val imputacionesList = mutableListOf<Imputacion>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-      binding = ActivityNuevoViajeBinding.inflate(layoutInflater)
+        binding = ActivityNuevoViajeBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         // Habilita el modo Edge-to-Edge
@@ -46,8 +47,11 @@ class NuevoViajeActivity : AppCompatActivity() {
         configurarCampoDeFecha()
         configurarValidacionEnTiempoReal() // 1. Nueva función para validación
 
-        idViajeAEditar = intent.getStringExtra(EXTRA_VIAJE_ID)
-        if (idViajeAEditar != null) {
+        // Modificado: Se obtiene el ID como Long. Si no se pasa, el valor por defecto es 0L.
+        idViajeAEditar = intent.getLongExtra(EXTRA_VIAJE_ID, 0L)
+
+        // Modificado: Se comprueba si el ID es diferente de 0L
+        if (idViajeAEditar != 0L) {
             // Modo Edición
             binding.editTextNombreViaje.setText(intent.getStringExtra(EXTRA_VIAJE_NOMBRE))
             binding.editTextFechaViaje.setText(intent.getStringExtra(EXTRA_VIAJE_FECHA))
@@ -119,7 +123,8 @@ class NuevoViajeActivity : AppCompatActivity() {
             dataIntent.putExtra(EXTRA_VIAJE_IMPUTACION_PT, imputacionSeleccionada.pt)
             dataIntent.putExtra(EXTRA_VIAJE_IMPUTACION_WP, imputacionSeleccionada.wp)
 
-            if (idViajeAEditar != null) {
+            // Modificado: Se devuelve el ID (sea 0L o el ID de edición)
+            if (idViajeAEditar != 0L) {
                 dataIntent.putExtra(EXTRA_VIAJE_ID, idViajeAEditar)
             }
             setResult(Activity.RESULT_OK, dataIntent)
@@ -130,7 +135,8 @@ class NuevoViajeActivity : AppCompatActivity() {
     }
 
     private fun configurarCampoDeFecha() {
-        if (idViajeAEditar == null) {
+        // Modificado: Se comprueba 0L
+        if (idViajeAEditar == 0L) {
             val calendario = Calendar.getInstance()
             val formatoFecha = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
             binding.editTextFechaViaje.setText(formatoFecha.format(calendario.time))
@@ -155,8 +161,8 @@ class NuevoViajeActivity : AppCompatActivity() {
     }
 
     private fun cargarOpciones() {
-        val userId = Firebase.auth.currentUser?.uid ?: return
-        val userPrefs = getSharedPreferences("UserPrefs_$userId", Context.MODE_PRIVATE)
+        // Modificado: Se usa "UserPrefs_local"
+        val userPrefs = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE)
 
         val monedas = userPrefs.getStringSet("MONEDAS", emptySet())?.toList() ?: emptyList()
         val monedasAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, monedas)
@@ -176,6 +182,7 @@ class NuevoViajeActivity : AppCompatActivity() {
     }
 
     companion object {
+        // Modificado: El ID es Long, pero la clave (key) del Intent sigue siendo un String
         const val EXTRA_VIAJE_ID = "EXTRA_VIAJE_ID"
         const val EXTRA_VIAJE_NOMBRE = "EXTRA_VIAJE_NOMBRE"
         const val EXTRA_VIAJE_FECHA = "EXTRA_VIAJE_FECHA"
