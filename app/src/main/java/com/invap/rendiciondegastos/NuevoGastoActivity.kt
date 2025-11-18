@@ -21,10 +21,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
-// import com.google.firebase.auth.ktx.auth // Eliminado
-// import com.google.firebase.firestore.ktx.firestore // Eliminado
-// import com.google.firebase.ktx.Firebase // Eliminado
-// import com.google.firebase.storage.ktx.storage // Eliminado
 import com.invap.rendiciondegastos.databinding.ActivityNuevoGastoBinding
 import kotlinx.coroutines.launch
 import java.io.File
@@ -32,21 +28,18 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-// import java.util.UUID // Ya no se necesita para nombres de archivo
 
 class NuevoGastoActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityNuevoGastoBinding
-    // private val db = Firebase.firestore // Reemplazado por Room
-    // private val storage = Firebase.storage // Reemplazado por Almacenamiento Local
-    private lateinit var db: AppDatabase // Instancia de Room
+    private lateinit var db: AppDatabase
 
-    private var viajeId: Long = 0L // Modificado: de String a Long
-    private var idGastoAEditar: Long = 0L // Modificado: de String a Long
+    private var viajeId: Long = 0L
+    private var idGastoAEditar: Long = 0L
 
-    private var fotoUri: Uri? = null // Uri temporal para la cámara
-    private var pathFotoLocal: String? = null // Path local permanente de la foto
-    private var urlFotoExistente: String? = null // Path local (si se está editando)
+    private var fotoUri: Uri? = null
+    private var pathFotoLocal: String? = null
+    private var urlFotoExistente: String? = null
 
     private val formasPagoList = mutableListOf<FormaDePago>()
     private val imputacionesList = mutableListOf<Imputacion>()
@@ -62,10 +55,8 @@ class NuevoGastoActivity : AppCompatActivity() {
             if (success) {
                 binding.imageViewFotoRecibo.setImageURI(fotoUri)
                 binding.imageViewFotoRecibo.visibility = View.VISIBLE
-                urlFotoExistente = null // Indica que se usará la nueva foto
-                // pathFotoLocal ya se asignó en abrirCamara()
+                urlFotoExistente = null
             } else {
-                // Si falla, reseteamos el path local
                 pathFotoLocal = null
             }
         }
@@ -76,20 +67,15 @@ class NuevoGastoActivity : AppCompatActivity() {
         binding = ActivityNuevoGastoBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Inicializar Room
         db = AppDatabase.getInstance(applicationContext)
 
-        // Habilita el modo Edge-to-Edge
         WindowCompat.setDecorFitsSystemWindows(window, false)
-
-        // Aplica el relleno para las barras del sistema
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
 
-        // Modificado: Se obtienen IDs como Long
         viajeId = intent.getLongExtra(EXTRA_VIAJE_ID, 0L)
         idGastoAEditar = intent.getLongExtra(EXTRA_GASTO_ID, 0L)
 
@@ -101,7 +87,7 @@ class NuevoGastoActivity : AppCompatActivity() {
 
         cargarOpcionesDesplegables()
         configurarCampoDeFecha()
-        configurarValidacionEnTiempoReal() // Configura los listeners de validación
+        configurarValidacionEnTiempoReal()
 
         if (idGastoAEditar == 0L) { // Modo Nuevo Gasto
             val monedaDefecto = intent.getStringExtra(EXTRA_VIAJE_MONEDA_DEFECTO)
@@ -124,6 +110,23 @@ class NuevoGastoActivity : AppCompatActivity() {
             }
         }
 
+        // --- LÓGICA DE CHECKBOX AÑADIDA ---
+        binding.checkboxSinComprobante.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                // Si se marca "Sin comprobante", deshabilitar la cámara y limpiar fotos
+                binding.buttonTomarFoto.isEnabled = false
+                binding.imageViewFotoRecibo.visibility = View.GONE
+                fotoUri = null
+                pathFotoLocal = null
+                urlFotoExistente = null
+                binding.imageViewFotoRecibo.setImageURI(null)
+            } else {
+                // Si se desmarca, habilitar la cámara
+                binding.buttonTomarFoto.isEnabled = true
+            }
+        }
+        // --- FIN LÓGICA AÑADIDA ---
+
         binding.buttonGuardarGasto.setOnClickListener {
             if (validarCampos()) {
                 guardarGasto()
@@ -132,7 +135,7 @@ class NuevoGastoActivity : AppCompatActivity() {
             }
         }
 
-        validarCampos() // Llamada inicial para establecer el estado del botón
+        validarCampos()
     }
 
     private fun configurarValidacionEnTiempoReal() {
@@ -152,7 +155,6 @@ class NuevoGastoActivity : AppCompatActivity() {
     }
 
     private fun validarCampos(): Boolean {
-        // Lógica sin cambios
         val tipoGastoValido = !(binding.autoCompleteTipoGasto.text?.toString().isNullOrEmpty())
         binding.autoCompleteTipoGasto.error = if (tipoGastoValido) null else "Campo obligatorio"
         val imputacionValida = !(binding.autoCompleteImputacion.text?.toString().isNullOrEmpty())
@@ -168,9 +170,8 @@ class NuevoGastoActivity : AppCompatActivity() {
         return esValido
     }
 
-    // Modificado: Lógica de guardado principal (usa Room y Coroutines)
     private fun guardarGasto() {
-        binding.buttonGuardarGasto.isEnabled = false // Deshabilitamos para evitar doble clic
+        binding.buttonGuardarGasto.isEnabled = false
 
         val descripcion = binding.editTextDescripcionGasto.text.toString().trim()
         val montoStr = binding.editTextMontoGasto.text.toString().trim()
@@ -179,6 +180,9 @@ class NuevoGastoActivity : AppCompatActivity() {
         val moneda = binding.autoCompleteMoneda.text.toString()
         val formaDePagoNombre = binding.autoCompleteFormaPago.text.toString()
         val imputacionSeleccionadaStr = binding.autoCompleteImputacion.text.toString()
+
+        // --- LÓGICA DE CHECKBOX AÑADIDA ---
+        val esSinComprobante = binding.checkboxSinComprobante.isChecked
 
         val formaDePagoSeleccionada = formasPagoList.find { it.nombre == formaDePagoNombre }
         val imputacionSeleccionada = imputacionesList.find { "PT: ${it.pt} / WP: ${it.wp}" == imputacionSeleccionadaStr }
@@ -189,7 +193,6 @@ class NuevoGastoActivity : AppCompatActivity() {
             return
         }
 
-        // Lógica de SharedPreferences (sin cambios, ya usa "UserPrefs_local")
         val userPrefs = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE)
         val nombrePersona = userPrefs.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = userPrefs.getString("LEGAJO", "") ?: ""
@@ -200,28 +203,24 @@ class NuevoGastoActivity : AppCompatActivity() {
                 val tag: String
                 val urlFotoFinal: String
 
-                if (idGastoAEditar != 0L) { // Estamos editando
+                if (idGastoAEditar != 0L) { // Editando
                     tag = intent.getStringExtra(EXTRA_GASTO_TAG) ?: ""
-                    // Si se tomó una foto nueva, se usa pathFotoLocal.
-                    // Si no, se usa la urlFotoExistente (que ya es un path local).
-                    urlFotoFinal = pathFotoLocal ?: (urlFotoExistente ?: "")
-
-                } else { // Estamos creando un gasto nuevo
-                    // Calcular TAG usando Room
+                    // MODIFICADO: Si está marcado, no guarda foto.
+                    urlFotoFinal = if (esSinComprobante) "" else (pathFotoLocal ?: (urlFotoExistente ?: ""))
+                } else { // Creando
                     val count = db.gastoDao().countGastosByFormaDePago(viajeId, formaDePagoNombre)
                     tag = "${formaDePagoSeleccionada.prefijo}${count + 1}"
-                    // Si se tomó foto, se usa. Si no, queda vacío.
-                    urlFotoFinal = pathFotoLocal ?: ""
+                    // MODIFICADO: Si está marcado, no guarda foto.
+                    urlFotoFinal = if (esSinComprobante) "" else (pathFotoLocal ?: "")
                 }
 
-                // Creamos el objeto Gasto
                 val gasto = Gasto(
-                    id = idGastoAEditar, // Si es 0L, Room lo autogenera. Si tiene valor, actualiza.
+                    id = idGastoAEditar,
                     viajeId = viajeId,
                     descripcion = descripcion,
                     monto = montoStr.toDouble(),
                     fecha = fecha,
-                    urlFotoRecibo = urlFotoFinal, // Se guarda el PATH local
+                    urlFotoRecibo = urlFotoFinal,
                     moneda = moneda,
                     tipoGasto = tipoGasto,
                     formaDePago = formaDePagoNombre,
@@ -231,10 +230,10 @@ class NuevoGastoActivity : AppCompatActivity() {
                     nombrePersona = nombrePersona,
                     legajo = legajo,
                     centroCostos = centroCostos,
-                    timestamp = System.currentTimeMillis()
+                    timestamp = System.currentTimeMillis(),
+                    sinComprobante = esSinComprobante // --- CAMPO NUEVO GUARDADO ---
                 )
 
-                // Guardar o Actualizar en Room
                 guardarDatosEnRoom(gasto)
 
             } catch (e: Exception) {
@@ -245,9 +244,6 @@ class NuevoGastoActivity : AppCompatActivity() {
         }
     }
 
-    // Eliminado: subirFotoYGuardarDatos(...)
-
-    // Modificado: Función de guardado de Room
     private fun guardarDatosEnRoom(gasto: Gasto) {
         lifecycleScope.launch {
             try {
@@ -260,7 +256,7 @@ class NuevoGastoActivity : AppCompatActivity() {
                     mensaje = "Gasto actualizado"
                 }
                 Toast.makeText(this@NuevoGastoActivity, mensaje, Toast.LENGTH_SHORT).show()
-                finish() // Volvemos a DetalleViajeActivity
+                finish()
             } catch (e: Exception) {
                 Log.e("NuevoGastoActivity", "Error al escribir en Room", e)
                 Toast.makeText(this@NuevoGastoActivity, "Error al guardar en base de datos", Toast.LENGTH_SHORT).show()
@@ -270,7 +266,7 @@ class NuevoGastoActivity : AppCompatActivity() {
     }
 
     private fun configurarCampoDeFecha() {
-        if (idGastoAEditar == 0L) { // Modificado: Comprueba 0L
+        if (idGastoAEditar == 0L) {
             val calendario = Calendar.getInstance()
             val formatoFecha = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
             binding.editTextFechaGasto.setText(formatoFecha.format(calendario.time))
@@ -281,7 +277,6 @@ class NuevoGastoActivity : AppCompatActivity() {
     }
 
     private fun mostrarDatePickerDialog() {
-        // Lógica sin cambios
         val calendario = Calendar.getInstance()
         val anio = calendario.get(Calendar.YEAR)
         val mes = calendario.get(Calendar.MONTH)
@@ -309,10 +304,18 @@ class NuevoGastoActivity : AppCompatActivity() {
             binding.autoCompleteImputacion.setText("PT: $pt / WP: $wp", false)
         }
 
+        // --- LÓGICA DE CHECKBOX AÑADIDA ---
+        val sinComprobante = intent.getBooleanExtra(EXTRA_GASTO_SIN_COMPROBANTE, false)
+        binding.checkboxSinComprobante.isChecked = sinComprobante
+        if (sinComprobante) {
+            binding.buttonTomarFoto.isEnabled = false
+        }
+        // --- FIN LÓGICA AÑADIDA ---
+
         urlFotoExistente = intent.getStringExtra(EXTRA_GASTO_URL_FOTO)
-        if (!urlFotoExistente.isNullOrEmpty()) {
+        // MODIFICADO: Solo mostrar la foto si hay URL Y no está marcado "Sin comprobante"
+        if (!urlFotoExistente.isNullOrEmpty() && !sinComprobante) {
             binding.imageViewFotoRecibo.visibility = View.VISIBLE
-            // Modificado: Carga la foto desde un archivo local, no una URL
             try {
                 Glide.with(this).load(File(urlFotoExistente)).into(binding.imageViewFotoRecibo)
             } catch (e: Exception) {
@@ -324,7 +327,6 @@ class NuevoGastoActivity : AppCompatActivity() {
     }
 
     private fun cargarOpcionesDesplegables() {
-        // Lógica sin cambios (ya usa "UserPrefs_local")
         val userPrefs = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE)
 
         val monedas = userPrefs.getStringSet("MONEDAS", setOf("Pesos", "Dólar"))?.toList() ?: listOf("Pesos", "Dólar")
@@ -363,7 +365,6 @@ class NuevoGastoActivity : AppCompatActivity() {
     private fun abrirCamara() {
         try {
             val fotoArchivo = crearArchivoDeImagen()
-            // Guardamos el path local ANTES de lanzar la cámara
             pathFotoLocal = fotoArchivo.absolutePath
             fotoUri = FileProvider.getUriForFile(this, "com.invap.rendiciondegastos.fileprovider", fotoArchivo)
             cameraLauncher.launch(fotoUri)
@@ -376,7 +377,6 @@ class NuevoGastoActivity : AppCompatActivity() {
     private fun crearArchivoDeImagen(): File {
         val timeStamp: String = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val storageDir: File? = getExternalFilesDir("Pictures")
-        // Asegurarse de que el directorio exista
         if (storageDir != null && !storageDir.exists()) {
             storageDir.mkdirs()
         }
@@ -384,12 +384,11 @@ class NuevoGastoActivity : AppCompatActivity() {
     }
 
     companion object {
-        // Las claves (keys) de los Intent siguen siendo String
-        const val EXTRA_VIAJE_ID = "EXTRA_VIAJE_ID" // Pasa un Long
+        const val EXTRA_VIAJE_ID = "EXTRA_VIAJE_ID"
         const val EXTRA_VIAJE_MONEDA_DEFECTO = "EXTRA_VIAJE_MONEDA_DEFECTO"
         const val EXTRA_VIAJE_IMPUTACION_PT = "EXTRA_VIAJE_IMPUTACION_PT"
         const val EXTRA_VIAJE_IMPUTACION_WP = "EXTRA_VIAJE_IMPUTACION_WP"
-        const val EXTRA_GASTO_ID = "EXTRA_GASTO_ID" // Pasa un Long
+        const val EXTRA_GASTO_ID = "EXTRA_GASTO_ID"
         const val EXTRA_GASTO_DESCRIPCION = "EXTRA_GASTO_DESCRIPCION"
         const val EXTRA_GASTO_MONTO = "EXTRA_GASTO_MONTO"
         const val EXTRA_GASTO_FECHA = "EXTRA_GASTO_FECHA"
@@ -400,5 +399,8 @@ class NuevoGastoActivity : AppCompatActivity() {
         const val EXTRA_GASTO_TAG = "EXTRA_GASTO_TAG"
         const val EXTRA_GASTO_IMPUTACION_PT = "EXTRA_GASTO_IMPUTACION_PT"
         const val EXTRA_GASTO_IMPUTACION_WP = "EXTRA_GASTO_IMPUTACION_WP"
+
+        // --- CONSTANTE AÑADIDA ---
+        const val EXTRA_GASTO_SIN_COMPROBANTE = "EXTRA_GASTO_SIN_COMPROBANTE"
     }
 }

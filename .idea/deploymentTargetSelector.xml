@@ -4,7 +4,7 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2025-07-28T16:07:01.062278100Z">
+        <DropdownSelection timestamp="2025-11-18T18:23:04.019627200Z">
           <Target type="DEFAULT_BOOT">
             <handle>
               <DeviceId pluginId="PhysicalDevice" identifier="serial=R5CT22GNSCW" />
@@ -15,7 +15,7 @@
           <targets>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="PhysicalDevice" identifier="serial=R5CT22GNSCW" />
+                <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\mrivarola\.android\avd\Medium_Phone.avd" />
               </handle>
             </Target>
           </targets>

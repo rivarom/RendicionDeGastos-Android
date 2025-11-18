@@ -117,6 +117,14 @@
             android:text="Tomar Foto del Recibo"
             app:icon="@android:drawable/ic_menu_camera" />
 
+        <CheckBox
+            android:id="@+id/checkboxSinComprobante"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:text="Gasto sin comprobante" />
+
         <ImageView
             android:id="@+id/imageViewFotoRecibo"
             android:layout_width="100dp"
