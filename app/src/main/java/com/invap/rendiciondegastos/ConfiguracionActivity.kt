@@ -143,10 +143,11 @@ class ConfiguracionActivity : AppCompatActivity() {
         binding.editTextCentroCostos.setText(userPrefs.getString("CENTRO_COSTOS", ""))
 
         // Valores por defecto para un usuario nuevo
-        val monedasPorDefecto = setOf("Pesos", "Dólar")
+        val monedasPorDefecto = setOf("Pesos", "Dólar", "Euro")
         val tiposGastoPorDefecto = setOf("Transporte", "Comida", "Alojamiento")
         // --- CAMBIOS AQUÍ ---
-        val formasPagoPorDefecto = setOf("Tarjeta de Débito Recargable::TDR", "Efectivo::EFE","Tarjeta de Crédito::TC")
+        val formasPagoPorDefecto =
+            setOf("Tarjeta de Débito Recargable::TDR", "Efectivo::EFE", "Tarjeta de Crédito::TC")
         val imputacionesPorDefecto = setOf("00::00")
 
         // Cargar Monedas
@@ -185,26 +186,26 @@ class ConfiguracionActivity : AppCompatActivity() {
     }
 
     private fun guardarConfiguracion() {
-        // val userId = Firebase.auth.currentUser?.uid ?: return // Eliminado
         val userPrefs = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE) // Modificado
-
         val formasPagoAGuardar = formasPagoList.map { "${it.nombre}::${it.prefijo}" }.toSet()
         val imputacionesAGuardar = imputacionesList.map { "${it.pt}::${it.wp}" }.toSet()
+        val editor = userPrefs.edit()
 
-        with(userPrefs.edit()) {
-            putString("NOMBRE_PERSONA", binding.editTextNombrePersona.text.toString())
-            putString("LEGAJO", binding.editTextLegajo.text.toString())
-            putString("CENTRO_COSTOS", binding.editTextCentroCostos.text.toString())
+        editor.putString("NOMBRE_PERSONA", binding.editTextNombrePersona.text.toString())
+        editor.putString("LEGAJO", binding.editTextLegajo.text.toString())
+        editor.putString("CENTRO_COSTOS", binding.editTextCentroCostos.text.toString())
+        editor.putStringSet("MONEDAS", monedasList.toSet())
+        editor.putStringSet("TIPOS_GASTO", tiposGastoList.toSet())
+        editor.putStringSet("FORMAS_PAGO", formasPagoAGuardar)
+        editor.putStringSet("IMPUTACIONES", imputacionesAGuardar)
+        editor.putBoolean("CONFIGURACION_COMPLETA", true) // Marcamos que la configuración se guardó
 
-            putStringSet("MONEDAS", monedasList.toSet())
-            putStringSet("TIPOS_GASTO", tiposGastoList.toSet())
-            putStringSet("FORMAS_PAGO", formasPagoAGuardar)
-            putStringSet("IMPUTACIONES", imputacionesAGuardar)
-            // --- LÍNEA NUEVA ---
-            putBoolean("CONFIGURACION_COMPLETA", true) // Marcamos que la configuración se guardó
-            apply()
+        val exito = editor.commit()
+        if (exito) {
+            Toast.makeText(this, "Configuración guardada correctamente", Toast.LENGTH_SHORT).show()
+            finish() // Solo cerramos si se guardó bien
+        } else {
+            Toast.makeText(this, "Error al guardar la configuración", Toast.LENGTH_LONG).show()
         }
-        Toast.makeText(this, "Configuración guardada", Toast.LENGTH_SHORT).show()
-        finish()
     }
 }

@@ -444,25 +444,27 @@ class DetalleViajeActivity : AppCompatActivity() {
         val pdfDocument = PdfDocument()
         val pageWidth = 842
         val pageHeight = 595
-        val margin = 40f
+        val margin = 30f
         val recibosPorPagina = 3
         val espacioEntreRecibos = 20f
 
         val anchoContenido = pageWidth - 2 * margin
         val anchoRecibo = (anchoContenido - (recibosPorPagina - 1) * espacioEntreRecibos) / recibosPorPagina
-        val altoRecibo = pageHeight - 2 * margin - 60f
+        val altoContenidoRecibo = pageHeight - 2 * margin - 20f
 
         val paintTag = TextPaint().apply {
             color = android.graphics.Color.BLACK; textSize = 30f; isFakeBoldText = true
         }
+        // CAMBIO: Letra de descripción achicada a 16f
         val paintTextoGasto = TextPaint().apply {
-            color = android.graphics.Color.DKGRAY; textSize = 20f
+            color = android.graphics.Color.DKGRAY; textSize = 16f
         }
         val paintSello = Paint().apply {
             color = android.graphics.Color.RED; style = Paint.Style.STROKE; strokeWidth = 2f
         }
+        // CAMBIO: Letra de sello achicada a 16f y centrada
         val paintTextoSello = Paint().apply {
-            color = android.graphics.Color.RED; textSize = 24f; isFakeBoldText = true; textAlign = Paint.Align.CENTER
+            color = android.graphics.Color.RED; textSize = 16f; isFakeBoldText = true; textAlign = Paint.Align.CENTER
         }
 
         val totalGastos = gastos.size
@@ -478,45 +480,83 @@ class DetalleViajeActivity : AppCompatActivity() {
                 val gasto = gastos[gastoIndex]
                 val xOffset = margin + i * (anchoRecibo + espacioEntreRecibos)
 
-                // --- 1. Dibujar TAG (Común a todos) ---
+                // 1. Dibujar TAG
                 val yPosTag = margin + 30f
                 canvas.drawText(gasto.tagGasto, xOffset, yPosTag, paintTag)
 
-                // --- 2. Dibujar Texto del Gasto (Común a todos) ---
+                // 2. Dibujar Texto del Gasto
                 val textoGasto = "${gasto.descripcion}\n${gasto.formaDePago}\n${gasto.fecha}\n${
                     NumberFormat.getCurrencyInstance(Locale("es", "AR")).format(gasto.monto)
                 } (${gasto.moneda})"
 
                 val textLayout = StaticLayout.Builder.obtain(textoGasto, 0, textoGasto.length, paintTextoGasto, anchoRecibo.toInt()).build()
 
-                // Empezar a dibujar el texto debajo del TAG
-                val yPosTexto = yPosTag + 40f
+                // CAMBIO: Se eliminó el espacio extra, el texto va pegado al TAG
+                val yPosTexto = yPosTag + paintTag.fontMetrics.descent + 5f
+
                 canvas.save()
                 canvas.translate(xOffset, yPosTexto)
                 textLayout.draw(canvas)
                 canvas.restore()
 
-                // --- 3. Dibujar Foto o Sello (Condicional) ---
-                // Empezar a dibujar la foto/sello 10px debajo del texto
-                val yPosContenido = yPosTexto + textLayout.height + 10f
+                val yPosInicioContenidoRestante = yPosTexto + textLayout.height + 10f
+                val altoDisponibleParaContenido = altoContenidoRecibo - (yPosInicioContenidoRestante - margin)
+
                 val bitmap = bitmaps[gasto]
 
                 if (bitmap != null) {
-                    // Hay foto, dibujarla
-                    val scale = anchoRecibo / bitmap.width.toFloat()
-                    val nuevoAlto = bitmap.height * scale
-                    val scaledBitmap = Bitmap.createScaledBitmap(bitmap, anchoRecibo.toInt(), nuevoAlto.toInt(), true)
-                    canvas.drawBitmap(scaledBitmap, xOffset, yPosContenido, null)
+                    // CAMBIO: Lógica para estirar la foto un 20% más (scaleFactor = 1.20f)
+                    val scaleFactor = 1.20f
+
+                    val ratioBitmap = bitmap.width.toFloat() / bitmap.height.toFloat()
+                    val safeAltoDisponible = if (altoDisponibleParaContenido > 0) altoDisponibleParaContenido else 1f
+
+                    var anchoFinal: Float
+                    var altoFinal: Float
+
+                    // Escalado base para que entre
+                    if (ratioBitmap > anchoRecibo / safeAltoDisponible) {
+                        anchoFinal = anchoRecibo
+                        altoFinal = anchoRecibo / ratioBitmap
+                    } else {
+                        altoFinal = safeAltoDisponible
+                        anchoFinal = safeAltoDisponible * ratioBitmap
+                    }
+
+                    // Aplicar el estiramiento del 20%
+                    anchoFinal *= scaleFactor
+                    altoFinal *= scaleFactor
+
+                    // Recortes de seguridad para que no se salga del papel
+                    if (anchoFinal > anchoRecibo) {
+                        anchoFinal = anchoRecibo
+                        altoFinal = anchoRecibo / ratioBitmap
+                    }
+                    if (altoFinal > safeAltoDisponible) {
+                        altoFinal = safeAltoDisponible
+                        anchoFinal = safeAltoDisponible * ratioBitmap
+                    }
+
+                    val scaledBitmap = Bitmap.createScaledBitmap(bitmap, anchoFinal.toInt(), altoFinal.toInt(), true)
+
+                    // Centrar la imagen
+                    val xPosImagen = xOffset + (anchoRecibo - anchoFinal) / 2
+                    canvas.drawBitmap(scaledBitmap, xPosImagen, yPosInicioContenidoRestante, null)
 
                 } else {
-                    // No hay foto
                     if (gasto.sinComprobante) {
-                        // Si está marcado, dibujar "SIN COMPROBANTE" en la parte inferior
-                        val rectSello = RectF(xOffset + 20, yPosTag + altoRecibo - 80f, xOffset + anchoRecibo - 20, yPosTag + altoRecibo - 30f)
+                        // CAMBIO: Sello "SIN COMPROBANTE" centrado verticalmente en el espacio sobrante
+                        val centerY = yPosInicioContenidoRestante + (altoDisponibleParaContenido / 2)
+                        val rectSello = RectF(
+                            xOffset + 20,
+                            centerY - 25,
+                            xOffset + anchoRecibo - 20,
+                            centerY + 25
+                        )
                         canvas.drawRoundRect(rectSello, 10f, 10f, paintSello)
-                        canvas.drawText("SIN COMPROBANTE", rectSello.centerX(), rectSello.centerY() + 8, paintTextoSello)
+                        val textY = centerY - (paintTextoSello.descent() + paintTextoSello.ascent()) / 2
+                        canvas.drawText("SIN COMPROBANTE", rectSello.centerX(), textY, paintTextoSello)
                     }
-                    // Si no tiene bitmap Y tampoco está marcado sinComprobante, no se dibuja nada más.
                 }
                 gastoIndex++
             }
@@ -536,7 +576,7 @@ class DetalleViajeActivity : AppCompatActivity() {
             binding.progressBarPDF.visibility = View.GONE
         }
     }
-    // --- FIN LÓGICA DE PDF MODIFICADA ---
+
 
     private fun dibujarPieDePagina(page: PdfDocument.Page, paginaActual: Int, totalPaginas: Int) {
         val canvas = page.canvas
