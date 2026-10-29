@@ -12,6 +12,7 @@ import android.util.Log
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -21,8 +22,14 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
+import com.bumptech.glide.signature.ObjectKey
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.invap.rendiciondegastos.databinding.ActivityNuevoGastoBinding
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -40,6 +47,8 @@ class NuevoGastoActivity : AppCompatActivity() {
     private var fotoUri: Uri? = null
     private var pathFotoLocal: String? = null
     private var urlFotoExistente: String? = null
+    // Giro (horario, múltiplo de 90) elegido en el formulario; se aplica a la foto recién al guardar
+    private var rotacionPendiente = 0
 
     private val formasPagoList = mutableListOf<FormaDePago>()
     private val imputacionesList = mutableListOf<Imputacion>()
@@ -53,13 +62,32 @@ class NuevoGastoActivity : AppCompatActivity() {
     private val cameraLauncher =
         registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
             if (success) {
-                binding.imageViewFotoRecibo.setImageURI(fotoUri)
+                // Glide: respeta la orientación EXIF y reduce la imagen (evita decodificar 12 MP en el hilo principal)
+                Glide.with(this).load(fotoUri).into(binding.imageViewFotoRecibo)
                 binding.imageViewFotoRecibo.visibility = View.VISIBLE
+                rotacionPendiente = 0
+                binding.imageViewFotoRecibo.rotation = 0f
+                binding.buttonGirarFoto.visibility = View.VISIBLE
                 urlFotoExistente = null
             } else {
                 pathFotoLocal = null
             }
         }
+
+    // Resultado del escáner de documentos (una sola página, ya recortada, girada y corregida)
+    private val escanerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { resultado ->
+        if (resultado.resultCode == android.app.Activity.RESULT_OK) {
+            val uri = GmsDocumentScanningResult.fromActivityResultIntent(resultado.data)?.pages?.firstOrNull()?.imageUri
+            if (uri != null) {
+                guardarFotoEscaneada(uri)
+            } else {
+                Toast.makeText(this, "No se obtuvo la imagen escaneada", Toast.LENGTH_SHORT).show()
+            }
+        }
+        // Si el usuario cancela el escáner no se cambia nada: se conserva la foto que hubiera
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,9 +113,11 @@ class NuevoGastoActivity : AppCompatActivity() {
             return
         }
 
+        tasasReferencia = Monedas.tasasReferencia(this)
         cargarOpcionesDesplegables()
         configurarCampoDeFecha()
         configurarValidacionEnTiempoReal()
+        configurarImporteDolares()
 
         if (idGastoAEditar == 0L) { // Modo Nuevo Gasto
             val monedaDefecto = intent.getStringExtra(EXTRA_VIAJE_MONEDA_DEFECTO)
@@ -103,11 +133,13 @@ class NuevoGastoActivity : AppCompatActivity() {
             prepararModoEdicion()
         }
 
+        binding.buttonGirarFoto.setOnClickListener {
+            rotacionPendiente = (rotacionPendiente + 90) % 360
+            binding.imageViewFotoRecibo.rotation = rotacionPendiente.toFloat()
+        }
+
         binding.buttonTomarFoto.setOnClickListener {
-            when {
-                ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> abrirCamara()
-                else -> requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-            }
+            abrirEscaner()
         }
 
         // --- LÓGICA DE CHECKBOX AÑADIDA ---
@@ -120,9 +152,14 @@ class NuevoGastoActivity : AppCompatActivity() {
                 pathFotoLocal = null
                 urlFotoExistente = null
                 binding.imageViewFotoRecibo.setImageURI(null)
+                rotacionPendiente = 0
+                binding.imageViewFotoRecibo.rotation = 0f
+                binding.buttonGirarFoto.visibility = View.GONE
+                habilitarSelectorTamano(false)
             } else {
                 // Si se desmarca, habilitar la cámara
                 binding.buttonTomarFoto.isEnabled = true
+                habilitarSelectorTamano(true)
             }
         }
         // --- FIN LÓGICA AÑADIDA ---
@@ -136,6 +173,96 @@ class NuevoGastoActivity : AppCompatActivity() {
         }
 
         validarCampos()
+    }
+
+    private fun tamanoSeleccionado(): TamanoRecibo = when (binding.radioGroupTamanoRecibo.checkedRadioButtonId) {
+        R.id.radioTamanoMediano -> TamanoRecibo.MEDIANO
+        R.id.radioTamanoGrande -> TamanoRecibo.GRANDE
+        else -> TamanoRecibo.CHICO
+    }
+
+    private fun seleccionarTamano(tamano: TamanoRecibo) {
+        binding.radioGroupTamanoRecibo.check(when (tamano) {
+            TamanoRecibo.MEDIANO -> R.id.radioTamanoMediano
+            TamanoRecibo.GRANDE -> R.id.radioTamanoGrande
+            TamanoRecibo.CHICO -> R.id.radioTamanoChico
+        })
+    }
+
+    /** Sin comprobante no hay foto que dimensionar: el selector se deshabilita y queda en Chico. */
+    private fun habilitarSelectorTamano(habilitado: Boolean) {
+        if (!habilitado) seleccionarTamano(TamanoRecibo.CHICO)
+        for (i in 0 until binding.radioGroupTamanoRecibo.childCount) {
+            binding.radioGroupTamanoRecibo.getChildAt(i).isEnabled = habilitado
+        }
+    }
+
+    // --- Importe en dólares (referencia, opcional) ---
+    private var tasasReferencia: Map<String, Double> = emptyMap()
+    private var dolaresManual = false          // true si el usuario escribió el valor (no es estimado)
+    private var actualizandoDolares = false    // evita tratar como "manual" un cambio hecho por el código
+
+    private fun configurarImporteDolares() {
+        val recalcular = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) { actualizarCampoDolares() }
+        }
+        binding.autoCompleteMoneda.addTextChangedListener(recalcular)
+        binding.editTextMontoGasto.addTextChangedListener(recalcular)
+        binding.editTextImporteDolares.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                if (actualizandoDolares) return
+                dolaresManual = !s.isNullOrBlank()
+                if (!dolaresManual) actualizarCampoDolares() // vació el campo: vuelve a estimarse
+                else aplicarEstiloDolares()
+            }
+        })
+    }
+
+    /** Muestra el campo solo para monedas distintas del dólar y, mientras no sea manual, lo estima con la tasa de referencia. */
+    private fun actualizarCampoDolares() {
+        val moneda = binding.autoCompleteMoneda.text?.toString()?.trim().orEmpty()
+        val visible = moneda.isNotEmpty() && !Monedas.esDolar(moneda)
+        binding.layoutImporteDolares.visibility = if (visible) View.VISIBLE else View.GONE
+        if (!visible || dolaresManual) return
+        val monto = binding.editTextMontoGasto.text?.toString()?.trim()?.toDoubleOrNull()
+        val tasa = tasasReferencia[Monedas.normalizar(moneda)]
+        val estimado = if (monto != null && tasa != null) monto / tasa else null
+        actualizandoDolares = true
+        binding.editTextImporteDolares.setText(estimado?.let { String.format(Locale.US, "%.2f", it) } ?: "")
+        actualizandoDolares = false
+        aplicarEstiloDolares()
+    }
+
+    private var colorFondoDolaresNormal: Int? = null
+
+    /** Estimado: fondo celeste (igual que en el Excel). Ingresado a mano: aspecto normal. */
+    private fun aplicarEstiloDolares() {
+        val layout = binding.layoutImporteDolares
+        if (colorFondoDolaresNormal == null) colorFondoDolaresNormal = layout.boxBackgroundColor
+        val moneda = binding.autoCompleteMoneda.text?.toString()?.trim().orEmpty()
+        val hayValor = !binding.editTextImporteDolares.text.isNullOrBlank()
+        val estimado = hayValor && !dolaresManual
+        layout.boxBackgroundColor = if (estimado) 0x663F8FD2 else (colorFondoDolaresNormal ?: layout.boxBackgroundColor)
+        // Indicadores que no dependen del estilo del campo: etiqueta y color del texto
+        layout.hint = when {
+            estimado -> "Importe en dólares (ESTIMADO)"
+            hayValor -> "Importe en dólares (verificado)"
+            else -> "Importe en dólares (opcional)"
+        }
+        val colorTexto = if (estimado) android.graphics.Color.rgb(30, 110, 200) else null
+        if (colorTexto != null) binding.editTextImporteDolares.setTextColor(colorTexto)
+        else binding.editTextImporteDolares.setTextColor(binding.editTextDescripcionGasto.textColors)
+        binding.editTextImporteDolares.setTypeface(null, if (estimado) android.graphics.Typeface.ITALIC else android.graphics.Typeface.NORMAL)
+        layout.helperText = when {
+            estimado -> "Estimado con la tasa de referencia; si lo editás pasa a valor verificado"
+            hayValor -> "Valor ingresado (verificado)"
+            Monedas.tasaDe(tasasReferencia, moneda) == null -> "Sin tasa de referencia para esta moneda (se carga en Configuración)"
+            else -> null
+        }
     }
 
     private fun configurarValidacionEnTiempoReal() {
@@ -184,11 +311,24 @@ class NuevoGastoActivity : AppCompatActivity() {
         // --- LÓGICA DE CHECKBOX AÑADIDA ---
         val esSinComprobante = binding.checkboxSinComprobante.isChecked
 
+        // Importe en dólares: solo aplica a monedas distintas del dólar
+        val usdTexto = binding.editTextImporteDolares.text?.toString()?.trim()?.replace(',', '.')
+        val importeDolares = if (Monedas.esDolar(moneda)) null else usdTexto?.toDoubleOrNull()
+        val dolaresEstimado = importeDolares != null && !dolaresManual
+
         val formaDePagoSeleccionada = formasPagoList.find { it.nombre == formaDePagoNombre }
         val imputacionSeleccionada = imputacionesList.find { "PT: ${it.pt} / WP: ${it.wp}" == imputacionSeleccionadaStr }
 
         if (formaDePagoSeleccionada == null || imputacionSeleccionada == null) {
             Toast.makeText(this, "Por favor, selecciona valores válidos de las listas", Toast.LENGTH_SHORT).show()
+            binding.buttonGuardarGasto.isEnabled = true
+            return
+        }
+
+        // Según el manual: sin "Gasto sin comprobante" la foto del recibo es obligatoria
+        val tieneFoto = pathFotoLocal != null || !urlFotoExistente.isNullOrEmpty()
+        if (!esSinComprobante && !tieneFoto) {
+            Toast.makeText(this, "Tomá la foto del recibo o marcá 'Gasto sin comprobante'", Toast.LENGTH_LONG).show()
             binding.buttonGuardarGasto.isEnabled = true
             return
         }
@@ -200,16 +340,32 @@ class NuevoGastoActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
+                // Aplicar el giro elegido a la foto recién ahora, para que cancelar el formulario no la modifique
+                val rutaFotoAGirar = if (esSinComprobante) null else (pathFotoLocal ?: urlFotoExistente)
+                if (rotacionPendiente != 0 && !rutaFotoAGirar.isNullOrEmpty()) {
+                    withContext(Dispatchers.IO) { FotoUtil.girarJpeg(File(rutaFotoAGirar), rotacionPendiente) }
+                    rotacionPendiente = 0
+                }
+
                 val tag: String
                 val urlFotoFinal: String
+                var timestampGasto = System.currentTimeMillis()
 
                 if (idGastoAEditar != 0L) { // Editando
-                    tag = intent.getStringExtra(EXTRA_GASTO_TAG) ?: ""
+                    // Conservar el momento de creación original (define el orden en las listas)
+                    db.gastoDao().getGastoById(idGastoAEditar)?.let { timestampGasto = it.timestamp }
+                    val tagOriginal = intent.getStringExtra(EXTRA_GASTO_TAG) ?: ""
+                    val formaOriginal = intent.getStringExtra(EXTRA_GASTO_FORMA_PAGO) ?: ""
+                    // Si cambió la forma de pago, el TAG debe llevar el prefijo y numeración nuevos
+                    tag = if (tagOriginal.isNotEmpty() && formaOriginal == formaDePagoNombre) {
+                        tagOriginal
+                    } else {
+                        generarTag(formaDePagoSeleccionada.prefijo, formaDePagoNombre)
+                    }
                     // MODIFICADO: Si está marcado, no guarda foto.
                     urlFotoFinal = if (esSinComprobante) "" else (pathFotoLocal ?: (urlFotoExistente ?: ""))
                 } else { // Creando
-                    val count = db.gastoDao().countGastosByFormaDePago(viajeId, formaDePagoNombre)
-                    tag = "${formaDePagoSeleccionada.prefijo}${count + 1}"
+                    tag = generarTag(formaDePagoSeleccionada.prefijo, formaDePagoNombre)
                     // MODIFICADO: Si está marcado, no guarda foto.
                     urlFotoFinal = if (esSinComprobante) "" else (pathFotoLocal ?: "")
                 }
@@ -230,8 +386,11 @@ class NuevoGastoActivity : AppCompatActivity() {
                     nombrePersona = nombrePersona,
                     legajo = legajo,
                     centroCostos = centroCostos,
-                    timestamp = System.currentTimeMillis(),
-                    sinComprobante = esSinComprobante // --- CAMPO NUEVO GUARDADO ---
+                    timestamp = timestampGasto,
+                    sinComprobante = esSinComprobante, // --- CAMPO NUEVO GUARDADO ---
+                    tamanoRecibo = if (esSinComprobante) TamanoRecibo.CHICO.name else tamanoSeleccionado().name,
+                    importeDolares = importeDolares,
+                    dolaresEstimado = dolaresEstimado
                 )
 
                 guardarDatosEnRoom(gasto)
@@ -242,6 +401,18 @@ class NuevoGastoActivity : AppCompatActivity() {
                 binding.buttonGuardarGasto.isEnabled = true
             }
         }
+    }
+
+    /**
+     * Siguiente TAG libre para la forma de pago en este viaje: toma el mayor número ya usado + 1
+     * (no cuenta filas, para no duplicar TAGs cuando se borró un gasto intermedio).
+     */
+    private suspend fun generarTag(prefijo: String, formaDePago: String): String {
+        val existentes = db.gastoDao().getTagsByFormaDePago(viajeId, formaDePago).toSet()
+        val maximo = existentes.maxOfOrNull { Regex("(\\d+)\$").find(it)?.value?.toIntOrNull() ?: 0 } ?: 0
+        var n = maximo + 1
+        while (existentes.contains("$prefijo$n")) n++
+        return "$prefijo$n"
     }
 
     private fun guardarDatosEnRoom(gasto: Gasto) {
@@ -293,7 +464,7 @@ class NuevoGastoActivity : AppCompatActivity() {
     private fun prepararModoEdicion() {
         binding.buttonGuardarGasto.text = "Actualizar Gasto"
         binding.editTextDescripcionGasto.setText(intent.getStringExtra(EXTRA_GASTO_DESCRIPCION))
-        binding.editTextMontoGasto.setText(intent.getDoubleExtra(EXTRA_GASTO_MONTO, 0.0).toString())
+        binding.editTextMontoGasto.setText(java.math.BigDecimal.valueOf(intent.getDoubleExtra(EXTRA_GASTO_MONTO, 0.0)).stripTrailingZeros().toPlainString())
         binding.editTextFechaGasto.setText(intent.getStringExtra(EXTRA_GASTO_FECHA))
         binding.autoCompleteTipoGasto.setText(intent.getStringExtra(EXTRA_GASTO_TIPO), false)
         binding.autoCompleteMoneda.setText(intent.getStringExtra(EXTRA_GASTO_MONEDA), false)
@@ -304,11 +475,28 @@ class NuevoGastoActivity : AppCompatActivity() {
             binding.autoCompleteImputacion.setText("PT: $pt / WP: $wp", false)
         }
 
+        // Importe en dólares guardado (manual o estimado)
+        if (intent.hasExtra(EXTRA_GASTO_IMPORTE_DOLARES)) {
+            val usd = intent.getDoubleExtra(EXTRA_GASTO_IMPORTE_DOLARES, 0.0)
+            dolaresManual = !intent.getBooleanExtra(EXTRA_GASTO_DOLARES_ESTIMADO, false)
+            actualizandoDolares = true
+            binding.editTextImporteDolares.setText(String.format(Locale.US, "%.2f", usd))
+            actualizandoDolares = false
+            binding.layoutImporteDolares.visibility = View.VISIBLE
+            aplicarEstiloDolares()
+        } else {
+            dolaresManual = false
+            actualizarCampoDolares()
+        }
+
         // --- LÓGICA DE CHECKBOX AÑADIDA ---
         val sinComprobante = intent.getBooleanExtra(EXTRA_GASTO_SIN_COMPROBANTE, false)
         binding.checkboxSinComprobante.isChecked = sinComprobante
         if (sinComprobante) {
             binding.buttonTomarFoto.isEnabled = false
+            habilitarSelectorTamano(false)
+        } else {
+            seleccionarTamano(TamanoRecibo.desde(intent.getStringExtra(EXTRA_GASTO_TAMANO_RECIBO)))
         }
         // --- FIN LÓGICA AÑADIDA ---
 
@@ -316,8 +504,12 @@ class NuevoGastoActivity : AppCompatActivity() {
         // MODIFICADO: Solo mostrar la foto si hay URL Y no está marcado "Sin comprobante"
         if (!urlFotoExistente.isNullOrEmpty() && !sinComprobante) {
             binding.imageViewFotoRecibo.visibility = View.VISIBLE
+            binding.buttonGirarFoto.visibility = View.VISIBLE
             try {
-                Glide.with(this).load(File(urlFotoExistente)).into(binding.imageViewFotoRecibo)
+                val archivoExistente = File(urlFotoExistente.orEmpty())
+                Glide.with(this).load(archivoExistente)
+                    .signature(ObjectKey(archivoExistente.lastModified())) // si la foto se giró, no usar la versión en caché
+                    .into(binding.imageViewFotoRecibo)
             } catch (e: Exception) {
                 Log.e("NuevoGastoActivity", "Error al cargar imagen en modo edición", e)
                 binding.imageViewFotoRecibo.visibility = View.GONE
@@ -329,11 +521,11 @@ class NuevoGastoActivity : AppCompatActivity() {
     private fun cargarOpcionesDesplegables() {
         val userPrefs = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE)
 
-        val monedas = userPrefs.getStringSet("MONEDAS", setOf("Pesos", "Dólar"))?.toList() ?: listOf("Pesos", "Dólar")
+        val monedas = userPrefs.getStringSet("MONEDAS", setOf("Pesos", "Dólar"))?.toList()?.sorted() ?: listOf("Pesos", "Dólar")
         val monedasAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, monedas)
         binding.autoCompleteMoneda.setAdapter(monedasAdapter)
 
-        val tiposGasto = userPrefs.getStringSet("TIPOS_GASTO", setOf("Transporte", "Comida"))?.toList() ?: listOf("Transporte", "Comida")
+        val tiposGasto = userPrefs.getStringSet("TIPOS_GASTO", setOf("Transporte", "Comida"))?.toList()?.sorted() ?: listOf("Transporte", "Comida")
         val tiposGastoAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, tiposGasto)
         binding.autoCompleteTipoGasto.setAdapter(tiposGastoAdapter)
 
@@ -345,7 +537,7 @@ class NuevoGastoActivity : AppCompatActivity() {
                 formasPagoList.add(FormaDePago(partes[0], partes[1]))
             }
         }
-        val formasPagoNombres = formasPagoList.map { it.nombre }
+        val formasPagoNombres = formasPagoList.map { it.nombre }.sorted()
         val formasPagoAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, formasPagoNombres)
         binding.autoCompleteFormaPago.setAdapter(formasPagoAdapter)
 
@@ -357,9 +549,66 @@ class NuevoGastoActivity : AppCompatActivity() {
                 imputacionesList.add(Imputacion(partes[0], partes[1]))
             }
         }
-        val imputacionesFormateadas = imputacionesList.map { "PT: ${it.pt} / WP: ${it.wp}" }
+        val imputacionesFormateadas = imputacionesList.map { "PT: ${it.pt} / WP: ${it.wp}" }.sorted()
         val imputacionesAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, imputacionesFormateadas)
         binding.autoCompleteImputacion.setAdapter(imputacionesAdapter)
+    }
+
+    /**
+     * Abre el escáner de documentos de Google. Si no está disponible (sin Google Play services,
+     * poca RAM, etc.) se usa la cámara común como respaldo.
+     */
+    private fun abrirEscaner() {
+        val opciones = GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(false)
+            .setPageLimit(1)
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build()
+        GmsDocumentScanning.getClient(opciones)
+            .getStartScanIntent(this)
+            .addOnSuccessListener { intentSender ->
+                escanerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+            }
+            .addOnFailureListener { e ->
+                Log.w("NuevoGastoActivity", "Escáner no disponible, se usa la cámara común", e)
+                Toast.makeText(this, "Escáner no disponible: se usa la cámara común", Toast.LENGTH_SHORT).show()
+                abrirCamaraConPermiso()
+            }
+    }
+
+    private fun abrirCamaraConPermiso() {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> abrirCamara()
+            else -> requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    /** Copia la imagen escaneada a la carpeta de fotos de la app y la deja como foto del gasto. */
+    private fun guardarFotoEscaneada(origen: Uri) {
+        lifecycleScope.launch {
+            try {
+                val destino = withContext(Dispatchers.IO) {
+                    val archivo = crearArchivoDeImagen()
+                    val entrada = contentResolver.openInputStream(origen)
+                        ?: throw java.io.IOException("No se pudo leer la imagen escaneada")
+                    entrada.use { input -> archivo.outputStream().use { salida -> input.copyTo(salida) } }
+                    archivo
+                }
+                pathFotoLocal = destino.absolutePath
+                urlFotoExistente = null
+                rotacionPendiente = 0
+                binding.imageViewFotoRecibo.rotation = 0f
+                Glide.with(this@NuevoGastoActivity).load(destino)
+                    .signature(ObjectKey(destino.lastModified()))
+                    .into(binding.imageViewFotoRecibo)
+                binding.imageViewFotoRecibo.visibility = View.VISIBLE
+                binding.buttonGirarFoto.visibility = View.VISIBLE
+            } catch (e: Exception) {
+                Log.e("NuevoGastoActivity", "Error al guardar la imagen escaneada", e)
+                Toast.makeText(this@NuevoGastoActivity, "No se pudo guardar la foto: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun abrirCamara() {
@@ -402,5 +651,8 @@ class NuevoGastoActivity : AppCompatActivity() {
 
         // --- CONSTANTE AÑADIDA ---
         const val EXTRA_GASTO_SIN_COMPROBANTE = "EXTRA_GASTO_SIN_COMPROBANTE"
+        const val EXTRA_GASTO_TAMANO_RECIBO = "EXTRA_GASTO_TAMANO_RECIBO"
+        const val EXTRA_GASTO_IMPORTE_DOLARES = "EXTRA_GASTO_IMPORTE_DOLARES"
+        const val EXTRA_GASTO_DOLARES_ESTIMADO = "EXTRA_GASTO_DOLARES_ESTIMADO"
     }
 }

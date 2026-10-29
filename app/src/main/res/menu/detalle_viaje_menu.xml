@@ -8,8 +8,23 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/action_completar_dolares"
+        android:title="Estimar importes en dólares faltantes"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/action_export_pdf"
         android:title="Exportar Recibos a PDF"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_export_viaje_guardar"
+        android:title="Exportar viaje (guardar en...)"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_export_viaje_compartir"
+        android:title="Exportar viaje (compartir)"
         app:showAsAction="never" />
 
 </menu>

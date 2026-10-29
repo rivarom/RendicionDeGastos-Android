@@ -34,5 +34,24 @@ data class Gasto(
     val centroCostos: String = "",
     val timestamp: Long = 0,
     // El comentario se movió aquí, fuera de los parámetros
-    val sinComprobante: Boolean = false
+    val sinComprobante: Boolean = false,
+    // Tamaño en que se imprime el recibo en el PDF (nombre de TamanoRecibo)
+    val tamanoRecibo: String = TamanoRecibo.CHICO.name,
+    // Importe en dólares de gastos en otra moneda (null = sin dato). Si [dolaresEstimado], se calculó con
+    // la tasa de referencia al cargar el gasto; si no, lo ingresó el usuario (p. ej. del resumen de la tarjeta).
+    val importeDolares: Double? = null,
+    val dolaresEstimado: Boolean = false
 )
+
+/** Tamaño de impresión del recibo en la hoja A4 apaisada del PDF. */
+enum class TamanoRecibo(val etiqueta: String) {
+    CHICO("Chico (1/3 de página)"),
+    MEDIANO("Mediano (1/2 página)"),
+    GRANDE("Grande (página completa, apaisado)");
+
+    companion object {
+        fun desde(valor: String?): TamanoRecibo = values().firstOrNull { it.name == valor } ?: CHICO
+    }
+}
+
+fun Gasto.tamano(): TamanoRecibo = TamanoRecibo.desde(tamanoRecibo)
