@@ -4,7 +4,12 @@
 
     <item
         android:id="@+id/action_export_excel"
-        android:title="Exportar a Excel"
+        android:title="Excel (compartir)"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_export_excel_guardar"
+        android:title="Excel (guardar en...)"
         app:showAsAction="never" />
 
     <item
@@ -14,7 +19,22 @@
 
     <item
         android:id="@+id/action_export_pdf"
-        android:title="Exportar Recibos a PDF"
+        android:title="Recibos PDF (compartir)"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_export_pdf_guardar"
+        android:title="Recibos PDF (guardar en...)"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_informe_compartir"
+        android:title="Informe interno (compartir)"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_informe_guardar"
+        android:title="Informe interno (guardar en...)"
         app:showAsAction="never" />
 
     <item

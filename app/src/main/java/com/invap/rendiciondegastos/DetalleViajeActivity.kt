@@ -62,6 +62,13 @@ private fun pdfMaxLadoPx(tamano: TamanoRecibo): Int = when (tamano) {
 /** En tamaño Grande, una foto vertical se gira 90° sola: los recibos grandes (A4/carta) se imprimen siempre apaisados. */
 private const val ROTAR_GRANDE_VERTICAL = true
 
+/** Calidad JPEG de las fotos incrustadas en el PDF, según el tamaño de impresión. */
+private fun pdfJpegCalidad(tamano: TamanoRecibo): Int = when (tamano) {
+    TamanoRecibo.CHICO -> 80
+    TamanoRecibo.MEDIANO -> 82
+    TamanoRecibo.GRANDE -> 85
+}
+
 class DetalleViajeActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityDetalleViajeBinding
@@ -75,6 +82,25 @@ class DetalleViajeActivity : AppCompatActivity() {
     private val listaDeGastos = mutableListOf<Gasto>()
     private var viajeActual: Viaje? = null
     private lateinit var adapter: GastosAdapter
+
+    // Excel y PDF de recibos: "guardar en..." con el selector del sistema
+    private val guardarExcelLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    ) { uri ->
+        if (uri != null) exportarAExcel(uri)
+    }
+    private val guardarRecibosLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri ->
+        if (uri != null) exportarRecibosAPDF(uri)
+    }
+
+    // Informe interno: "guardar en..." con el selector del sistema
+    private val guardarInformeLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri ->
+        if (uri != null) generarInformeInterno(uri)
+    }
 
     // "Guardar en...": el usuario elige dónde (Descargas, Drive, etc.) con el selector del sistema
     private val guardarViajeLauncher = registerForActivityResult(
@@ -188,15 +214,31 @@ class DetalleViajeActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_export_excel -> {
-                exportarAExcel()
+                exportarAExcel(null)
+                true
+            }
+            R.id.action_export_excel_guardar -> {
+                guardarExcelLauncher.launch("INVAP - Rendicion_${nombreArchivoSeguro(nombreViaje)}.xlsx")
                 true
             }
             R.id.action_completar_dolares -> {
                 completarDolaresFaltantes()
                 true
             }
+            R.id.action_informe_compartir -> {
+                generarInformeInterno(null)
+                true
+            }
+            R.id.action_informe_guardar -> {
+                guardarInformeLauncher.launch("Informe interno - ${nombreArchivoSeguro(nombreViaje)}.pdf")
+                true
+            }
             R.id.action_export_pdf -> {
-                exportarRecibosAPDF()
+                exportarRecibosAPDF(null)
+                true
+            }
+            R.id.action_export_pdf_guardar -> {
+                guardarRecibosLauncher.launch("Recibos_${nombreArchivoSeguro(nombreViaje)}.pdf")
                 true
             }
             R.id.action_export_viaje_guardar -> {
@@ -213,7 +255,8 @@ class DetalleViajeActivity : AppCompatActivity() {
     private fun nombreArchivoSeguro(nombre: String?): String =
         (nombre ?: "viaje").trim().replace(Regex("[\\\\/:*?\"<>|\\s]+"), "_").ifEmpty { "viaje" }
 
-    private fun exportarAExcel() {
+    /** Genera el Excel; con [destino] lo guarda ahí y sin destino lo comparte. */
+    private fun exportarAExcel(destino: Uri?) {
         if (listaDeGastos.isEmpty()) {
             Toast.makeText(this, "No hay gastos para exportar", Toast.LENGTH_SHORT).show()
             return
@@ -230,11 +273,61 @@ class DetalleViajeActivity : AppCompatActivity() {
             val tipos = userPrefs.getStringSet("TIPOS_GASTO", emptySet())?.toList() ?: emptyList()
             val logo = runCatching { resources.openRawResource(R.drawable.invap_logoverde).use { it.readBytes() } }.getOrNull()
             ExcelRendicion.generar(file, viaje, listaDeGastos.toList(), tipos, logo)
-            compartirArchivoExcel(file)
+            if (destino == null) {
+                compartirArchivoExcel(file)
+            } else {
+                val salida = contentResolver.openOutputStream(destino) ?: throw java.io.IOException("No se pudo abrir el destino elegido")
+                salida.use { out -> file.inputStream().use { it.copyTo(out) } }
+                Toast.makeText(this, "Excel guardado", Toast.LENGTH_LONG).show()
+            }
         } catch (e: Exception) {
             Log.e("ExportarExcel", "Error al generar el archivo Excel", e)
             Toast.makeText(this, "Error al generar el archivo Excel: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    /** Genera el informe interno; con [destino] lo guarda ahí y sin destino lo comparte. */
+    private fun generarInformeInterno(destino: Uri?) {
+        val viaje = viajeActual
+        if (viaje == null || listaDeGastos.isEmpty()) {
+            Toast.makeText(this, "No hay gastos para el informe", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val gastos = listaDeGastos.toList()
+        val tasas = Monedas.tasasReferencia(this)
+        binding.progressBarPDF.visibility = View.VISIBLE
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val file = File(externalCacheDir, "INVAP - Informe interno_${nombreArchivoSeguro(nombreViaje)}.pdf")
+                InformeInterno.generar(file, viaje, gastos, tasas)
+                if (destino != null) {
+                    val salida = contentResolver.openOutputStream(destino) ?: throw java.io.IOException("No se pudo abrir el destino elegido")
+                    salida.use { out -> file.inputStream().use { it.copyTo(out) } }
+                }
+                withContext(Dispatchers.Main) {
+                    if (destino == null) compartirInforme(file)
+                    else Toast.makeText(this@DetalleViajeActivity, "Informe guardado", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Log.e("InformeInterno", "Error al generar el informe", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@DetalleViajeActivity, "Error al generar el informe: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                withContext(NonCancellable + Dispatchers.Main) { binding.progressBarPDF.visibility = View.GONE }
+            }
+        }
+    }
+
+    private fun compartirInforme(file: File) {
+        val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "Informe interno del viaje: $nombreViaje")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(shareIntent, "Compartir informe interno"))
     }
 
     /** Completa el importe en dólares de los gastos que no lo tienen, con las tasas de referencia (queda marcado como estimado). */
@@ -316,7 +409,8 @@ class DetalleViajeActivity : AppCompatActivity() {
         }
     }
 
-    private fun exportarRecibosAPDF() {
+    /** Genera el PDF de recibos; con [destino] lo guarda ahí y sin destino lo comparte. */
+    private fun exportarRecibosAPDF(destino: Uri?) {
         if (listaDeGastos.isEmpty()) {
             Toast.makeText(this, "No hay gastos para exportar", Toast.LENGTH_SHORT).show()
             return
@@ -330,7 +424,14 @@ class DetalleViajeActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val file = crearDocumentoPDF(gastosOrdenados)
-                withContext(Dispatchers.Main) { compartirArchivoPDF(file) }
+                if (destino != null) {
+                    val salida = contentResolver.openOutputStream(destino) ?: throw java.io.IOException("No se pudo abrir el destino elegido")
+                    salida.use { out -> file.inputStream().use { it.copyTo(out) } }
+                }
+                withContext(Dispatchers.Main) {
+                    if (destino == null) compartirArchivoPDF(file)
+                    else Toast.makeText(this@DetalleViajeActivity, "PDF de recibos guardado", Toast.LENGTH_LONG).show()
+                }
             } catch (e: Exception) {
                 Log.e("ExportarPDF", "Error al generar el PDF", e)
                 withContext(Dispatchers.Main) {
@@ -347,175 +448,146 @@ class DetalleViajeActivity : AppCompatActivity() {
      * Cada recibo se imprime en el tamaño elegido al cargarlo: Chico (3 por página), Mediano (2 por página)
      * o Grande (1 por página). Los recibos de una misma forma de pago se acomodan en orden de carga,
      * combinando tamaños en una página mientras entren.
-     * Las fotos se cargan de a una, reducidas, y se liberan apenas se dibujan.
+     * Las fotos se cargan de a una, reducidas, y se incrustan como JPEG recomprimido (el PDF pesa
+     * poco más que los JPEG). El PDF se escribe con [PdfSimple], sin pasar por el Canvas de Android.
      */
     private fun crearDocumentoPDF(gastos: List<Gasto>): File {
-        val pdfDocument = PdfDocument()
-        try {
-            val pageWidth = 842
-            val pageHeight = 595
-            val margin = 30f
-            val separacion = 20f
-            val anchoContenido = pageWidth - 2 * margin
-            val altoContenidoRecibo = pageHeight - 2 * margin - 20f
-            val xMax = margin + anchoContenido
+        val pdf = PdfSimple()
+        val pageWidth = 842.0
+        val pageHeight = 595.0
+        val margin = 30.0
+        val separacion = 20.0
+        val anchoContenido = pageWidth - 2 * margin
+        val altoContenidoRecibo = pageHeight - 2 * margin - 20.0
+        val xMax = margin + anchoContenido
+        val colorTexto = 0x444444
+        val colorSello = 0xFF0000
+        val colorSelloNormal = 0x666666
 
-            fun anchoSlot(t: TamanoRecibo): Float = when (t) {
-                TamanoRecibo.CHICO -> (anchoContenido - 2 * separacion) / 3
-                TamanoRecibo.MEDIANO -> (anchoContenido - separacion) / 2
-                TamanoRecibo.GRANDE -> anchoContenido
-            }
-
-            val paintTag = TextPaint().apply {
-                color = android.graphics.Color.BLACK; textSize = 30f; isFakeBoldText = true
-            }
-            val paintTextoGasto = TextPaint().apply {
-                color = android.graphics.Color.DKGRAY; textSize = 16f
-            }
-            val paintSello = Paint().apply {
-                color = android.graphics.Color.RED; style = Paint.Style.STROKE; strokeWidth = 2f
-            }
-            val paintTextoSello = Paint().apply {
-                color = android.graphics.Color.RED; textSize = 16f; isFakeBoldText = true; textAlign = Paint.Align.CENTER
-            }
-            val paintImagen = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
-
-            // Dibuja un gasto (TAG, datos y foto o sello) en su espacio de la página
-            fun dibujarGasto(canvas: Canvas, gasto: Gasto, x: Float, ancho: Float) {
-                val tamano = gasto.tamano()
-                val grande = tamano == TamanoRecibo.GRANDE
-
-                // 1. TAG
-                val yPosTag = margin + 30f
-                canvas.drawText(gasto.tagGasto, x, yPosTag, paintTag)
-
-                // 2. Datos del gasto (en Grande, al costado del TAG para dejar más alto a la imagen)
-                val textoGasto = "${gasto.descripcion}\n${gasto.formaDePago}\n${gasto.fecha}\n${
-                    NumberFormat.getCurrencyInstance(Locale("es", "AR")).format(gasto.monto)
-                } (${gasto.moneda})"
-                val desplazamientoTexto = if (grande) 150f else 0f
-                val textLayout = StaticLayout.Builder.obtain(
-                    textoGasto, 0, textoGasto.length, paintTextoGasto, (ancho - desplazamientoTexto).toInt()
-                ).build()
-                val yPosTexto = if (grande) margin else yPosTag + paintTag.fontMetrics.descent + 5f
-                canvas.save()
-                canvas.translate(x + desplazamientoTexto, yPosTexto)
-                textLayout.draw(canvas)
-                canvas.restore()
-
-                val yInicioContenido = if (grande) maxOf(yPosTag + 10f, yPosTexto + textLayout.height + 10f)
-                                       else yPosTexto + textLayout.height + 10f
-                val altoDisponible = altoContenidoRecibo - (yInicioContenido - margin)
-
-                // 3. Foto (cargada solo ahora, reducida) o sello
-                val maxLado = pdfMaxLadoPx(tamano)
-                val archivoFoto = if (gasto.urlFotoRecibo.isNotEmpty()) File(gasto.urlFotoRecibo) else null
-                val target = if (archivoFoto != null && archivoFoto.exists()) {
-                    Glide.with(applicationContext).asBitmap()
-                        .load(archivoFoto)
-                        .signature(ObjectKey(archivoFoto.lastModified())) // si la foto se giró, no usar la versión en caché
-                        .disallowHardwareConfig() // el canvas del PDF es por software
-                        .downsample(DownsampleStrategy.AT_MOST)
-                        .submit(maxLado, maxLado)
-                } else null
-
-                val bitmap: Bitmap? = try {
-                    target?.get()
-                } catch (e: Exception) {
-                    Log.w("ExportarPDF", "No se pudo leer la foto de ${gasto.tagGasto}", e)
-                    null
-                }
-
-                if (bitmap != null) {
-                    val rotar = grande && ROTAR_GRANDE_VERTICAL && bitmap.height > bitmap.width
-                    val visibleAncho = if (rotar) bitmap.height else bitmap.width
-                    val visibleAlto = if (rotar) bitmap.width else bitmap.height
-                    val ratio = visibleAncho.toFloat() / visibleAlto.toFloat()
-                    val safeAlto = if (altoDisponible > 0) altoDisponible else 1f
-
-                    val anchoFinal: Float
-                    val altoFinal: Float
-                    if (ratio > ancho / safeAlto) {
-                        anchoFinal = ancho
-                        altoFinal = ancho / ratio
-                    } else {
-                        altoFinal = safeAlto
-                        anchoFinal = safeAlto * ratio
-                    }
-                    val xImagen = x + (ancho - anchoFinal) / 2
-
-                    // Se dibuja el bitmap reducido (no el original): el PDF conserva la resolución de maxLado
-                    if (!rotar) {
-                        canvas.drawBitmap(bitmap, null,
-                            RectF(xImagen, yInicioContenido, xImagen + anchoFinal, yInicioContenido + altoFinal), paintImagen)
-                    } else {
-                        canvas.save()
-                        canvas.translate(xImagen + anchoFinal, yInicioContenido)
-                        canvas.rotate(90f) // giro horario: el borde superior de la foto queda a la derecha
-                        canvas.drawBitmap(bitmap, null, RectF(0f, 0f, altoFinal, anchoFinal), paintImagen)
-                        canvas.restore()
-                    }
-                } else {
-                    // Sin foto: sello. Si no está marcado "sin comprobante" es porque el archivo no está disponible.
-                    val textoSello = if (gasto.sinComprobante) "SIN COMPROBANTE" else "RECIBO NO DISPONIBLE"
-                    val centerY = yInicioContenido + (altoDisponible / 2)
-                    val rectSello = RectF(x + 20, centerY - 25, x + ancho - 20, centerY + 25)
-                    canvas.drawRoundRect(rectSello, 10f, 10f, paintSello)
-                    val textY = centerY - (paintTextoSello.descent() + paintTextoSello.ascent()) / 2
-                    canvas.drawText(textoSello, rectSello.centerX(), textY, paintTextoSello)
-                }
-
-                // Liberar la foto de memoria antes de pasar a la siguiente
-                target?.let { Glide.with(applicationContext).clear(it) }
-            }
-
-            // Cada forma de pago se entrega e imprime por separado (junto a su planilla Excel):
-            // sus recibos van en páginas consecutivas y nunca se mezclan con los de otra forma de pago.
-            val grupos = gastos.groupBy { it.formaDePago }.toSortedMap(String.CASE_INSENSITIVE_ORDER)
-            var paginaGlobal = 0
-
-            for ((formaDePago, gastosGrupo) in grupos) {
-                // Acomodar en páginas, en orden de carga: (gasto, posición x) por página
-                val paginas = mutableListOf<MutableList<Pair<Gasto, Float>>>()
-                var paginaActual = mutableListOf<Pair<Gasto, Float>>()
-                var cursorX = margin
-                for (gasto in gastosGrupo) {
-                    val ancho = anchoSlot(gasto.tamano())
-                    if (paginaActual.isNotEmpty() && cursorX + ancho > xMax + 0.5f) {
-                        paginas.add(paginaActual)
-                        paginaActual = mutableListOf()
-                        cursorX = margin
-                    }
-                    paginaActual.add(gasto to cursorX)
-                    cursorX += ancho + separacion
-                }
-                if (paginaActual.isNotEmpty()) paginas.add(paginaActual)
-
-                paginas.forEachIndexed { indice, itemsPagina ->
-                    paginaGlobal++
-                    val page = pdfDocument.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, paginaGlobal).create())
-                    for ((gasto, x) in itemsPagina) {
-                        dibujarGasto(page.canvas, gasto, x, anchoSlot(gasto.tamano()))
-                    }
-                    dibujarPieDePagina(page, formaDePago, indice + 1, paginas.size)
-                    pdfDocument.finishPage(page)
-                }
-            }
-
-            val file = File(externalCacheDir, "Recibos_${nombreArchivoSeguro(nombreViaje)}.pdf")
-            FileOutputStream(file).use { pdfDocument.writeTo(it) }
-            return file
-        } finally {
-            pdfDocument.close()
+        fun anchoSlot(t: TamanoRecibo): Double = when (t) {
+            TamanoRecibo.CHICO -> (anchoContenido - 2 * separacion) / 3
+            TamanoRecibo.MEDIANO -> (anchoContenido - separacion) / 2
+            TamanoRecibo.GRANDE -> anchoContenido
         }
+
+        // Dibuja un gasto (TAG, datos y foto o sello) en su espacio de la página
+        fun dibujarGasto(page: PdfSimple.Pagina, gasto: Gasto, x: Double, ancho: Double) {
+            val tamano = gasto.tamano()
+            val grande = tamano == TamanoRecibo.GRANDE
+
+            // 1. TAG
+            val yPosTag = margin + 30.0
+            page.texto(x, yPosTag, gasto.tagGasto, PdfSimple.HELVETICA_NEGRITA, 30.0, 0x000000)
+
+            // 2. Datos del gasto (en Grande, al costado del TAG para dejar más alto a la imagen)
+            val montoTexto = NumberFormat.getCurrencyInstance(Locale("es", "AR")).format(gasto.monto)
+                .replace(' ', ' ').replace(' ', ' ')
+            val textoGasto = "${gasto.descripcion}\n${gasto.formaDePago}\n${gasto.fecha}\n$montoTexto (${gasto.moneda})"
+            val desplazamientoTexto = if (grande) 150.0 else 0.0
+            val lineas = PdfSimple.envolver(textoGasto, PdfSimple.HELVETICA, 16.0, ancho - desplazamientoTexto)
+            val altoLinea = 19.0
+            val yPosTexto = if (grande) margin else yPosTag + 8.0
+            lineas.forEachIndexed { i, linea ->
+                page.texto(x + desplazamientoTexto, yPosTexto + 15.0 + i * altoLinea, linea, PdfSimple.HELVETICA, 16.0, colorTexto)
+            }
+            val altoTexto = lineas.size * altoLinea
+
+            val yInicioContenido = if (grande) maxOf(yPosTag + 10.0, yPosTexto + altoTexto + 10.0)
+                                   else yPosTexto + altoTexto + 10.0
+            val altoDisponible = altoContenidoRecibo - (yInicioContenido - margin)
+
+            // 3. Foto (cargada solo ahora, reducida) o sello
+            val maxLado = pdfMaxLadoPx(tamano)
+            val archivoFoto = if (gasto.urlFotoRecibo.isNotEmpty()) File(gasto.urlFotoRecibo) else null
+            val target = if (archivoFoto != null && archivoFoto.exists()) {
+                Glide.with(applicationContext).asBitmap()
+                    .load(archivoFoto)
+                    .signature(ObjectKey(archivoFoto.lastModified())) // si la foto se giró, no usar la versión en caché
+                    .disallowHardwareConfig()
+                    .downsample(DownsampleStrategy.AT_MOST)
+                    .submit(maxLado, maxLado)
+            } else null
+
+            val bitmap: Bitmap? = try {
+                target?.get()
+            } catch (e: Exception) {
+                Log.w("ExportarPDF", "No se pudo leer la foto de ${gasto.tagGasto}", e)
+                null
+            }
+
+            if (bitmap != null) {
+                val rotar = grande && ROTAR_GRANDE_VERTICAL && bitmap.height > bitmap.width
+                val visibleAncho = if (rotar) bitmap.height else bitmap.width
+                val visibleAlto = if (rotar) bitmap.width else bitmap.height
+                val ratio = visibleAncho.toDouble() / visibleAlto.toDouble()
+                val safeAlto = if (altoDisponible > 0) altoDisponible else 1.0
+
+                val anchoFinal: Double
+                val altoFinal: Double
+                if (ratio > ancho / safeAlto) {
+                    anchoFinal = ancho
+                    altoFinal = ancho / ratio
+                } else {
+                    altoFinal = safeAlto
+                    anchoFinal = safeAlto * ratio
+                }
+                val xImagen = x + (ancho - anchoFinal) / 2
+
+                // Se incrusta el JPEG reducido y recomprimido (no el original ni un bitmap sin comprimir)
+                val salida = java.io.ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, pdfJpegCalidad(tamano), salida)
+                val indice = pdf.agregarJpeg(salida.toByteArray(), bitmap.width, bitmap.height)
+                page.imagen(indice, xImagen, yInicioContenido, anchoFinal, altoFinal, rotar)
+            } else {
+                // Sin foto: sello. Si no está marcado "sin comprobante" es porque el archivo no está disponible.
+                val textoSello = if (gasto.sinComprobante) "SIN COMPROBANTE" else "RECIBO NO DISPONIBLE"
+                val centerY = yInicioContenido + (altoDisponible / 2)
+                // "Sin comprobante" es un caso normal (gris); en rojo solo cuando falta un archivo que debería estar
+                val colorEstampa = if (gasto.sinComprobante) colorSelloNormal else colorSello
+                page.rectBorde(x + 20, centerY - 25, ancho - 40, 50.0, 10.0, 2.0, colorEstampa)
+                page.textoCentrado(x + ancho / 2, centerY + 5.5, textoSello, PdfSimple.HELVETICA_NEGRITA, 16.0, colorEstampa)
+            }
+
+            // Liberar la foto de memoria antes de pasar a la siguiente
+            target?.let { Glide.with(applicationContext).clear(it) }
+        }
+
+        // Cada forma de pago se entrega e imprime por separado (junto a su planilla Excel):
+        // sus recibos van en páginas consecutivas y nunca se mezclan con los de otra forma de pago.
+        val grupos = gastos.groupBy { it.formaDePago }.toSortedMap(String.CASE_INSENSITIVE_ORDER)
+
+        for ((formaDePago, gastosGrupo) in grupos) {
+            // Acomodar en páginas, en orden de carga: (gasto, posición x) por página
+            val paginas = mutableListOf<MutableList<Pair<Gasto, Double>>>()
+            var paginaActual = mutableListOf<Pair<Gasto, Double>>()
+            var cursorX = margin
+            for (gasto in gastosGrupo) {
+                val ancho = anchoSlot(gasto.tamano())
+                if (paginaActual.isNotEmpty() && cursorX + ancho > xMax + 0.5) {
+                    paginas.add(paginaActual)
+                    paginaActual = mutableListOf()
+                    cursorX = margin
+                }
+                paginaActual.add(gasto to cursorX)
+                cursorX += ancho + separacion
+            }
+            if (paginaActual.isNotEmpty()) paginas.add(paginaActual)
+
+            paginas.forEachIndexed { indice, itemsPagina ->
+                val page = pdf.nuevaPagina(pageWidth, pageHeight)
+                for ((gasto, x) in itemsPagina) {
+                    dibujarGasto(page, gasto, x, anchoSlot(gasto.tamano()))
+                }
+                dibujarPieDePagina(page, pageWidth, pageHeight, formaDePago, indice + 1, paginas.size)
+            }
+        }
+
+        val file = File(externalCacheDir, "Recibos_${nombreArchivoSeguro(nombreViaje)}.pdf")
+        FileOutputStream(file).use { pdf.guardar(it) }
+        return file
     }
 
-    private fun dibujarPieDePagina(page: PdfDocument.Page, formaDePago: String, paginaActual: Int, totalPaginas: Int) {
-        val canvas = page.canvas
-        val paint = Paint().apply {
-            color = android.graphics.Color.GRAY; textSize = 10f
-        }
-
+    private fun dibujarPieDePagina(page: PdfSimple.Pagina, pageWidth: Double, pageHeight: Double, formaDePago: String, paginaActual: Int, totalPaginas: Int) {
         val primerGasto = listaDeGastos.firstOrNull()
         val nombrePersona = primerGasto?.nombrePersona ?: ""
         val legajo = primerGasto?.legajo ?: ""
@@ -523,9 +595,9 @@ class DetalleViajeActivity : AppCompatActivity() {
         val fechaCreacion = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
         val textoPie = "INVAP - Rendición de Viajes | $nombrePersona (Legajo: $legajo) | Viaje: $nombreViaje | Creado: $fechaCreacion"
         val textoPagina = "$formaDePago  |  Página $paginaActual de $totalPaginas"
-        canvas.drawText(textoPie, 40f, page.info.pageHeight - 20f, paint)
-        paint.textAlign = Paint.Align.RIGHT
-        canvas.drawText(textoPagina, page.info.pageWidth - 40f, page.info.pageHeight - 20f, paint)
+        val gris = 0x888888
+        page.texto(40.0, pageHeight - 20.0, textoPie, PdfSimple.HELVETICA, 8.0, gris)
+        page.textoDerecha(pageWidth - 40.0, pageHeight - 20.0, textoPagina, PdfSimple.HELVETICA, 8.0, gris)
     }
 
     private fun compartirArchivoPDF(file: File) {

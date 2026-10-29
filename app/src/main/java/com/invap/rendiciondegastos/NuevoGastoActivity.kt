@@ -62,13 +62,25 @@ class NuevoGastoActivity : AppCompatActivity() {
     private val cameraLauncher =
         registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
             if (success) {
-                // Glide: respeta la orientación EXIF y reduce la imagen (evita decodificar 12 MP en el hilo principal)
-                Glide.with(this).load(fotoUri).into(binding.imageViewFotoRecibo)
-                binding.imageViewFotoRecibo.visibility = View.VISIBLE
-                rotacionPendiente = 0
-                binding.imageViewFotoRecibo.rotation = 0f
-                binding.buttonGirarFoto.visibility = View.VISIBLE
-                urlFotoExistente = null
+                val ruta = pathFotoLocal
+                lifecycleScope.launch {
+                    // La foto de la cámara (12 MP) se reduce y se endereza según su EXIF antes de mostrarla
+                    if (ruta != null) {
+                        withContext(Dispatchers.IO) {
+                            runCatching { FotoUtil.reducir(File(ruta)) }
+                                .onFailure { Log.w("NuevoGastoActivity", "No se pudo reducir la foto", it) }
+                        }
+                    }
+                    val archivo = if (ruta != null) File(ruta) else null
+                    val glide = Glide.with(this@NuevoGastoActivity)
+                    (if (archivo != null) glide.load(archivo).signature(ObjectKey(archivo.lastModified())) else glide.load(fotoUri))
+                        .into(binding.imageViewFotoRecibo)
+                    binding.imageViewFotoRecibo.visibility = View.VISIBLE
+                    rotacionPendiente = 0
+                    binding.imageViewFotoRecibo.rotation = 0f
+                    binding.buttonGirarFoto.visibility = View.VISIBLE
+                    urlFotoExistente = null
+                }
             } else {
                 pathFotoLocal = null
             }
@@ -593,6 +605,9 @@ class NuevoGastoActivity : AppCompatActivity() {
                     val entrada = contentResolver.openInputStream(origen)
                         ?: throw java.io.IOException("No se pudo leer la imagen escaneada")
                     entrada.use { input -> archivo.outputStream().use { salida -> input.copyTo(salida) } }
+                    // Si la foto es muy grande, se reduce (ahorra espacio y hace más liviano el PDF)
+                    runCatching { FotoUtil.reducir(archivo) }
+                        .onFailure { Log.w("NuevoGastoActivity", "No se pudo reducir la foto escaneada", it) }
                     archivo
                 }
                 pathFotoLocal = destino.absolutePath
