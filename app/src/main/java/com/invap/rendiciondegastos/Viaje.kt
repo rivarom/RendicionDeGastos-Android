@@ -16,6 +16,7 @@ data class Viaje(
     // --- Campos de configuración ---
     val nombrePersona: String = "",
     val legajo: String = "",
-    val centroCostos: String = ""
-    // El campo userId se elimina, ya no es necesario
+    val centroCostos: String = "",
+    // Fecha de fin del viaje (opcional, dd/MM/yyyy); se usa para los promedios por día del informe
+    val fechaFin: String = ""
 )

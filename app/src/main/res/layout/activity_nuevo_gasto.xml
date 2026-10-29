@@ -95,6 +95,20 @@
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/layoutImporteDolares"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:hint="Importe en dólares (opcional)"
+            android:visibility="gone">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/editTextImporteDolares"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="numberDecimal" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
@@ -117,6 +131,48 @@
             android:text="Tomar Foto del Recibo"
             app:icon="@android:drawable/ic_menu_camera" />
 
+        <CheckBox
+            android:id="@+id/checkboxSinComprobante"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:text="Gasto sin comprobante" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Tamaño de impresión del recibo"
+            android:textStyle="bold" />
+
+        <RadioGroup
+            android:id="@+id/radioGroupTamanoRecibo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/radioTamanoChico"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="Chico (1/3 de página) - tickets de rollo" />
+
+            <RadioButton
+                android:id="@+id/radioTamanoMediano"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Mediano (1/2 página)" />
+
+            <RadioButton
+                android:id="@+id/radioTamanoGrande"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Grande (página completa, apaisado)" />
+        </RadioGroup>
+
         <ImageView
             android:id="@+id/imageViewFotoRecibo"
             android:layout_width="100dp"
@@ -125,6 +181,17 @@
             android:layout_marginTop="16dp"
             android:contentDescription="Vista previa del recibo"
             android:scaleType="centerCrop"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
+        <Button
+            android:id="@+id/buttonGirarFoto"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:text="Girar foto 90°"
             android:visibility="gone"
             tools:visibility="visible" />
 

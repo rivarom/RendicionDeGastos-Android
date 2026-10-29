@@ -26,6 +26,8 @@ class ConfiguracionActivity : AppCompatActivity() {
     private lateinit var formasPagoAdapter: ConfiguracionConPrefijoAdapter
     private val imputacionesList = mutableListOf<Imputacion>()
     private lateinit var imputacionesAdapter: ImputacionAdapter
+    private val tasasList = mutableListOf<TasaCambio>()
+    private lateinit var tasasAdapter: TasaAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,6 +80,22 @@ class ConfiguracionActivity : AppCompatActivity() {
         }
         binding.recyclerViewImputaciones.adapter = imputacionesAdapter
         binding.recyclerViewImputaciones.layoutManager = LinearLayoutManager(this)
+
+        // Tasas de cambio de referencia
+        tasasAdapter = TasaAdapter(tasasList) { item ->
+            tasasList.remove(item)
+            tasasAdapter.notifyDataSetChanged()
+        }
+        binding.recyclerViewTasas.adapter = tasasAdapter
+        binding.recyclerViewTasas.layoutManager = LinearLayoutManager(this)
+    }
+
+    /** El desplegable de tasas ofrece las monedas configuradas, salvo el dólar (su tasa es 1). */
+    private fun actualizarMonedasTasa() {
+        val opciones = monedasList.filter { !Monedas.esDolar(it) }.sortedBy { Monedas.normalizar(it) }
+        binding.autoCompleteTasaMoneda.setAdapter(
+            android.widget.ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, opciones)
+        )
     }
 
     private fun setupButtons() {
@@ -129,6 +147,24 @@ class ConfiguracionActivity : AppCompatActivity() {
             }
         }
 
+        binding.autoCompleteTasaMoneda.setOnClickListener { actualizarMonedasTasa() }
+        binding.autoCompleteTasaMoneda.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) actualizarMonedasTasa() }
+
+        binding.buttonAnadirTasa.setOnClickListener {
+            val moneda = binding.autoCompleteTasaMoneda.text.toString().trim()
+            val tasa = binding.editTextTasaValor.text.toString().trim().replace(',', '.').toDoubleOrNull()
+            if (moneda.isEmpty() || tasa == null || tasa <= 0.0) {
+                Toast.makeText(this, "Elegí una moneda e ingresá una tasa mayor a 0", Toast.LENGTH_SHORT).show()
+            } else {
+                // Una sola tasa por moneda: si ya existía, se reemplaza
+                tasasList.removeAll { Monedas.normalizar(it.moneda) == Monedas.normalizar(moneda) }
+                tasasList.add(TasaCambio(moneda, tasa))
+                tasasAdapter.notifyDataSetChanged()
+                binding.autoCompleteTasaMoneda.text?.clear()
+                binding.editTextTasaValor.text?.clear()
+            }
+        }
+
         binding.buttonGuardarConfig.setOnClickListener {
             guardarConfiguracion()
         }
@@ -143,10 +179,11 @@ class ConfiguracionActivity : AppCompatActivity() {
         binding.editTextCentroCostos.setText(userPrefs.getString("CENTRO_COSTOS", ""))
 
         // Valores por defecto para un usuario nuevo
-        val monedasPorDefecto = setOf("Pesos", "Dólar")
+        val monedasPorDefecto = setOf("Pesos", "Dólar", "Euro")
         val tiposGastoPorDefecto = setOf("Transporte", "Comida", "Alojamiento")
         // --- CAMBIOS AQUÍ ---
-        val formasPagoPorDefecto = setOf("Tarjeta de Débito Recargable::TDR", "Efectivo::EFE","Tarjeta de Crédito::TC")
+        val formasPagoPorDefecto =
+            setOf("Tarjeta de Débito Recargable::TDR", "Efectivo::EFE", "Tarjeta de Crédito::TC")
         val imputacionesPorDefecto = setOf("00::00")
 
         // Cargar Monedas
@@ -182,29 +219,41 @@ class ConfiguracionActivity : AppCompatActivity() {
             }
         }
         imputacionesAdapter.notifyDataSetChanged()
+
+        // Cargar tasas de cambio de referencia
+        tasasList.clear()
+        userPrefs.getStringSet(Monedas.CLAVE_TASAS, emptySet())?.forEach {
+            val partes = it.split("::")
+            val tasa = partes.getOrNull(1)?.toDoubleOrNull()
+            if (partes.size == 2 && tasa != null) tasasList.add(TasaCambio(partes[0], tasa))
+        }
+        tasasList.sortBy { Monedas.normalizar(it.moneda) }
+        tasasAdapter.notifyDataSetChanged()
+        actualizarMonedasTasa()
     }
 
     private fun guardarConfiguracion() {
-        // val userId = Firebase.auth.currentUser?.uid ?: return // Eliminado
         val userPrefs = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE) // Modificado
-
         val formasPagoAGuardar = formasPagoList.map { "${it.nombre}::${it.prefijo}" }.toSet()
         val imputacionesAGuardar = imputacionesList.map { "${it.pt}::${it.wp}" }.toSet()
+        val editor = userPrefs.edit()
 
-        with(userPrefs.edit()) {
-            putString("NOMBRE_PERSONA", binding.editTextNombrePersona.text.toString())
-            putString("LEGAJO", binding.editTextLegajo.text.toString())
-            putString("CENTRO_COSTOS", binding.editTextCentroCostos.text.toString())
+        editor.putString("NOMBRE_PERSONA", binding.editTextNombrePersona.text.toString())
+        editor.putString("LEGAJO", binding.editTextLegajo.text.toString())
+        editor.putString("CENTRO_COSTOS", binding.editTextCentroCostos.text.toString())
+        editor.putStringSet("MONEDAS", monedasList.toSet())
+        editor.putStringSet("TIPOS_GASTO", tiposGastoList.toSet())
+        editor.putStringSet("FORMAS_PAGO", formasPagoAGuardar)
+        editor.putStringSet("IMPUTACIONES", imputacionesAGuardar)
+        editor.putStringSet(Monedas.CLAVE_TASAS, tasasList.map { "${it.moneda}::${it.tasa}" }.toSet())
+        editor.putBoolean("CONFIGURACION_COMPLETA", true) // Marcamos que la configuración se guardó
 
-            putStringSet("MONEDAS", monedasList.toSet())
-            putStringSet("TIPOS_GASTO", tiposGastoList.toSet())
-            putStringSet("FORMAS_PAGO", formasPagoAGuardar)
-            putStringSet("IMPUTACIONES", imputacionesAGuardar)
-            // --- LÍNEA NUEVA ---
-            putBoolean("CONFIGURACION_COMPLETA", true) // Marcamos que la configuración se guardó
-            apply()
+        val exito = editor.commit()
+        if (exito) {
+            Toast.makeText(this, "Configuración guardada correctamente", Toast.LENGTH_SHORT).show()
+            finish() // Solo cerramos si se guardó bien
+        } else {
+            Toast.makeText(this, "Error al guardar la configuración", Toast.LENGTH_LONG).show()
         }
-        Toast.makeText(this, "Configuración guardada", Toast.LENGTH_SHORT).show()
-        finish()
     }
 }
