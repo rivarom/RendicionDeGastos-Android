@@ -1,0 +1,220 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "4c6228904c393d8c66b8122e2f228c1f",
+    "entities": [
+      {
+        "tableName": "viajes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `nombre` TEXT NOT NULL, `fecha` TEXT NOT NULL, `monedaPorDefecto` TEXT NOT NULL, `imputacionPorDefectoPT` TEXT NOT NULL, `imputacionPorDefectoWP` TEXT NOT NULL, `nombrePersona` TEXT NOT NULL, `legajo` TEXT NOT NULL, `centroCostos` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nombre",
+            "columnName": "nombre",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fecha",
+            "columnName": "fecha",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "monedaPorDefecto",
+            "columnName": "monedaPorDefecto",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imputacionPorDefectoPT",
+            "columnName": "imputacionPorDefectoPT",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imputacionPorDefectoWP",
+            "columnName": "imputacionPorDefectoWP",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nombrePersona",
+            "columnName": "nombrePersona",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "legajo",
+            "columnName": "legajo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "centroCostos",
+            "columnName": "centroCostos",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "gastos",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `viajeId` INTEGER NOT NULL, `descripcion` TEXT NOT NULL, `monto` REAL NOT NULL, `fecha` TEXT NOT NULL, `urlFotoRecibo` TEXT NOT NULL, `moneda` TEXT NOT NULL, `tipoGasto` TEXT NOT NULL, `formaDePago` TEXT NOT NULL, `tagGasto` TEXT NOT NULL, `imputacionPT` TEXT NOT NULL, `imputacionWP` TEXT NOT NULL, `nombrePersona` TEXT NOT NULL, `legajo` TEXT NOT NULL, `centroCostos` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `sinComprobante` INTEGER NOT NULL, FOREIGN KEY(`viajeId`) REFERENCES `viajes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "viajeId",
+            "columnName": "viajeId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "descripcion",
+            "columnName": "descripcion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "monto",
+            "columnName": "monto",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fecha",
+            "columnName": "fecha",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "urlFotoRecibo",
+            "columnName": "urlFotoRecibo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "moneda",
+            "columnName": "moneda",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tipoGasto",
+            "columnName": "tipoGasto",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formaDePago",
+            "columnName": "formaDePago",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tagGasto",
+            "columnName": "tagGasto",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imputacionPT",
+            "columnName": "imputacionPT",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imputacionWP",
+            "columnName": "imputacionWP",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nombrePersona",
+            "columnName": "nombrePersona",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "legajo",
+            "columnName": "legajo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "centroCostos",
+            "columnName": "centroCostos",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sinComprobante",
+            "columnName": "sinComprobante",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_gastos_viajeId",
+            "unique": false,
+            "columnNames": [
+              "viajeId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_gastos_viajeId` ON `${TABLE_NAME}` (`viajeId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "viajes",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "viajeId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '4c6228904c393d8c66b8122e2f228c1f')"
+    ]
+  }
+}

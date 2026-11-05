@@ -3,6 +3,7 @@ package com.invap.rendiciondegastos
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.Menu
@@ -38,6 +39,7 @@ class MainActivity : AppCompatActivity() {
             val data: Intent? = result.data
             val nombre = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_NOMBRE)
             val fecha = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA)
+            val fechaFin = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA_FIN) ?: ""
             val monedaDefecto = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_MONEDA_DEFECTO)
             val imputacionPT = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_PT)
             val imputacionWP = data?.getStringExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_WP)
@@ -47,12 +49,19 @@ class MainActivity : AppCompatActivity() {
 
             if (nombre != null && fecha != null && monedaDefecto != null && imputacionPT != null && imputacionWP != null) {
                 if (id == 0L) { // Modificado: se comprueba 0L en lugar de null
-                    guardarNuevoViaje(nombre, fecha, monedaDefecto, imputacionPT, imputacionWP)
+                    guardarNuevoViaje(nombre, fecha, monedaDefecto, imputacionPT, imputacionWP, fechaFin)
                 } else {
-                    actualizarViaje(id!!, nombre, fecha, monedaDefecto, imputacionPT, imputacionWP)
+                    actualizarViaje(id!!, nombre, fecha, monedaDefecto, imputacionPT, imputacionWP, fechaFin)
                 }
             }
         }
+    }
+
+    // Selector del sistema para elegir el archivo .zip de un viaje exportado
+    private val importarViajeLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) importarViaje(uri)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -142,6 +151,10 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this, ConfiguracionActivity::class.java))
                 true
             }
+            R.id.action_import_viaje -> {
+                importarViajeLauncher.launch(arrayOf("*/*"))
+                true
+            }
             // Lógica de Logout ya eliminada
             else -> super.onOptionsItemSelected(item)
         }
@@ -168,6 +181,7 @@ class MainActivity : AppCompatActivity() {
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_ID, viaje.id) // Pasa Long
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_NOMBRE, viaje.nombre)
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA, viaje.fecha)
+                        intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_FECHA_FIN, viaje.fechaFin)
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_MONEDA_DEFECTO, viaje.monedaPorDefecto)
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_PT, viaje.imputacionPorDefectoPT)
                         intent.putExtra(NuevoViajeActivity.EXTRA_VIAJE_IMPUTACION_WP, viaje.imputacionPorDefectoWP)
@@ -206,6 +220,39 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun importarViaje(uri: Uri) {
+        lifecycleScope.launch {
+            try {
+                val entrada = contentResolver.openInputStream(uri)
+                    ?: throw ViajeBackupException("No se pudo abrir el archivo elegido.")
+                val resultado = ViajeBackup.importar(applicationContext, db, entrada)
+                cargarViajesLocales()
+
+                val mensaje = StringBuilder()
+                mensaje.append("Viaje \"${resultado.nombreViaje}\" importado con ${resultado.gastosImportados} gasto(s).")
+                if (resultado.fotosFaltantes > 0) {
+                    mensaje.append("\n\nNo se encontraron ${resultado.fotosFaltantes} foto(s) de recibos en el archivo.")
+                }
+                if (resultado.configAgregada.isNotEmpty()) {
+                    mensaje.append("\n\nSe agregaron a tu configuración (el viaje los usa y no estaban):\n")
+                    mensaje.append(resultado.configAgregada.joinToString("\n") { "• $it" })
+                }
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Importación completa")
+                    .setMessage(mensaje.toString())
+                    .setPositiveButton("Aceptar", null)
+                    .show()
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error al importar el viaje", e)
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("No se pudo importar")
+                    .setMessage(e.message ?: "Error desconocido")
+                    .setPositiveButton("Aceptar", null)
+                    .show()
+            }
+        }
+    }
+
     private fun cargarViajesLocales() {
         // Modificado: Lógica de Room en una coroutine
         lifecycleScope.launch {
@@ -221,7 +268,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun guardarNuevoViaje(nombre: String, fecha: String, monedaDefecto: String, imputacionPT: String, imputacionWP: String) {
+    private fun guardarNuevoViaje(nombre: String, fecha: String, monedaDefecto: String, imputacionPT: String, imputacionWP: String, fechaFin: String) {
         val sharedPref = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
@@ -236,7 +283,8 @@ class MainActivity : AppCompatActivity() {
             imputacionPorDefectoWP = imputacionWP,
             nombrePersona = nombrePersona,
             legajo = legajo,
-            centroCostos = centroCostos
+            centroCostos = centroCostos,
+            fechaFin = fechaFin
             // El ID es 0 por defecto, Room lo autogenerará
         )
 
@@ -253,7 +301,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun actualizarViaje(id: Long, nombre: String, fecha: String, monedaDefecto: String, imputacionPT: String, imputacionWP: String) {
+    private fun actualizarViaje(id: Long, nombre: String, fecha: String, monedaDefecto: String, imputacionPT: String, imputacionWP: String, fechaFin: String) {
         val sharedPref = getSharedPreferences("UserPrefs_local", Context.MODE_PRIVATE)
         val nombrePersona = sharedPref.getString("NOMBRE_PERSONA", "") ?: ""
         val legajo = sharedPref.getString("LEGAJO", "") ?: ""
@@ -269,7 +317,8 @@ class MainActivity : AppCompatActivity() {
             imputacionPorDefectoWP = imputacionWP,
             nombrePersona = nombrePersona,
             legajo = legajo,
-            centroCostos = centroCostos
+            centroCostos = centroCostos,
+            fechaFin = fechaFin
         )
 
         // Modificado: Lógica de Room en una coroutine

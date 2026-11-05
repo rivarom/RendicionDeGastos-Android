@@ -55,6 +55,7 @@ class NuevoViajeActivity : AppCompatActivity() {
             // Modo Edición
             binding.editTextNombreViaje.setText(intent.getStringExtra(EXTRA_VIAJE_NOMBRE))
             binding.editTextFechaViaje.setText(intent.getStringExtra(EXTRA_VIAJE_FECHA))
+            binding.editTextFechaFinViaje.setText(intent.getStringExtra(EXTRA_VIAJE_FECHA_FIN) ?: "")
             binding.autoCompleteMonedaViaje.setText(intent.getStringExtra(EXTRA_VIAJE_MONEDA_DEFECTO), false)
             val pt = intent.getStringExtra(EXTRA_VIAJE_IMPUTACION_PT)
             val wp = intent.getStringExtra(EXTRA_VIAJE_IMPUTACION_WP)
@@ -119,6 +120,7 @@ class NuevoViajeActivity : AppCompatActivity() {
             val dataIntent = Intent()
             dataIntent.putExtra(EXTRA_VIAJE_NOMBRE, nombreViaje)
             dataIntent.putExtra(EXTRA_VIAJE_FECHA, fechaViaje)
+            dataIntent.putExtra(EXTRA_VIAJE_FECHA_FIN, binding.editTextFechaFinViaje.text.toString().trim())
             dataIntent.putExtra(EXTRA_VIAJE_MONEDA_DEFECTO, monedaDefecto)
             dataIntent.putExtra(EXTRA_VIAJE_IMPUTACION_PT, imputacionSeleccionada.pt)
             dataIntent.putExtra(EXTRA_VIAJE_IMPUTACION_WP, imputacionSeleccionada.wp)
@@ -144,6 +146,9 @@ class NuevoViajeActivity : AppCompatActivity() {
         binding.editTextFechaViaje.setOnClickListener {
             mostrarDatePickerDialog()
         }
+        binding.editTextFechaFinViaje.setOnClickListener {
+            mostrarDatePickerFin()
+        }
     }
 
     private fun mostrarDatePickerDialog() {
@@ -158,6 +163,18 @@ class NuevoViajeActivity : AppCompatActivity() {
             binding.editTextFechaViaje.setText(formatoFecha.format(fechaSeleccionada.time))
         }, anio, mes, dia)
         datePickerDialog.show()
+    }
+
+    private fun mostrarDatePickerFin() {
+        // Parte de la fecha de fin actual; si no hay, de la de inicio; si no, de hoy
+        val base = Calendar.getInstance()
+        val formato = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        val texto = binding.editTextFechaFinViaje.text.toString().ifBlank { binding.editTextFechaViaje.text.toString() }
+        runCatching { formato.parse(texto) }.getOrNull()?.let { base.time = it }
+        DatePickerDialog(this, { _, year, month, dayOfMonth ->
+            val elegida = Calendar.getInstance().apply { set(year, month, dayOfMonth) }
+            binding.editTextFechaFinViaje.setText(formato.format(elegida.time))
+        }, base.get(Calendar.YEAR), base.get(Calendar.MONTH), base.get(Calendar.DAY_OF_MONTH)).show()
     }
 
     private fun cargarOpciones() {
@@ -186,6 +203,7 @@ class NuevoViajeActivity : AppCompatActivity() {
         const val EXTRA_VIAJE_ID = "EXTRA_VIAJE_ID"
         const val EXTRA_VIAJE_NOMBRE = "EXTRA_VIAJE_NOMBRE"
         const val EXTRA_VIAJE_FECHA = "EXTRA_VIAJE_FECHA"
+        const val EXTRA_VIAJE_FECHA_FIN = "EXTRA_VIAJE_FECHA_FIN"
         const val EXTRA_VIAJE_MONEDA_DEFECTO = "EXTRA_VIAJE_MONEDA_DEFECTO"
         const val EXTRA_VIAJE_IMPUTACION_PT = "EXTRA_VIAJE_IMPUTACION_PT"
         const val EXTRA_VIAJE_IMPUTACION_WP = "EXTRA_VIAJE_IMPUTACION_WP"

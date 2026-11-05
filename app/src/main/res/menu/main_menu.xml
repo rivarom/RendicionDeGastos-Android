@@ -2,11 +2,11 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
-        android:id="@+id/action_settings"
-        android:title="Configuración"
+        android:id="@+id/action_import_viaje"
+        android:title="Importar viaje"
         app:showAsAction="never" />
     <item
-        android:id="@+id/action_logout"
-        android:title="Cerrar Sesión"
+        android:id="@+id/action_settings"
+        android:title="Configuración"
         app:showAsAction="never" />
 </menu>

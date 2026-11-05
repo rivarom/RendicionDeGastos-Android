@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.CAMERA" />
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -15,11 +15,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.RendicionDeGastos"
         tools:targetApi="31">
-
-        <activity
-            android:name=".LoginActivity"
-            android:exported="false">
-        </activity>
 
         <activity
             android:name=".MainActivity"
@@ -42,6 +37,19 @@
         <activity
             android:name=".ConfiguracionActivity"
             android:exported="false" />
+        <!-- Destino de "Compartir" para recibos en PDF -->
+        <activity
+            android:name=".ImportarReciboActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="Rendición de Viajes"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity>
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.invap.rendiciondegastos.fileprovider"

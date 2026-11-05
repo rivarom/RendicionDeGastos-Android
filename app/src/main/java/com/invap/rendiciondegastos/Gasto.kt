@@ -13,27 +13,45 @@ import androidx.room.PrimaryKey
         childColumns = ["viajeId"],
         onDelete = ForeignKey.CASCADE
     )],
-    indices = [Index(value = ["viajeId"])] // Mejora el rendimiento de las consultas por viajeId
+    indices = [Index(value = ["viajeId"])]
 )
 data class Gasto(
     @PrimaryKey(autoGenerate = true)
-    var id: Long = 0, // Modificado: de String a Long
-    val viajeId: Long = 0, // Modificado: de String a Long (debe coincidir con Viaje.id)
+    var id: Long = 0,
+    val viajeId: Long = 0,
     val descripcion: String = "",
     val monto: Double = 0.0,
     val fecha: String = "",
-    val urlFotoRecibo: String = "", // Almacenará el path local (sigue siendo String)
+    val urlFotoRecibo: String = "",
     val moneda: String = "",
     val tipoGasto: String = "",
     val formaDePago: String = "",
     val tagGasto: String = "",
-    // --- Nuevos campos ---
     val imputacionPT: String = "",
     val imputacionWP: String = "",
-    // --- Campos de configuración ---
     val nombrePersona: String = "",
     val legajo: String = "",
     val centroCostos: String = "",
-    // --- Campo para ordenar ---
-    val timestamp: Long = 0
+    val timestamp: Long = 0,
+    // El comentario se movió aquí, fuera de los parámetros
+    val sinComprobante: Boolean = false,
+    // Tamaño en que se imprime el recibo en el PDF (nombre de TamanoRecibo)
+    val tamanoRecibo: String = TamanoRecibo.CHICO.name,
+    // Importe en dólares de gastos en otra moneda (null = sin dato). Si [dolaresEstimado], se calculó con
+    // la tasa de referencia al cargar el gasto; si no, lo ingresó el usuario (p. ej. del resumen de la tarjeta).
+    val importeDolares: Double? = null,
+    val dolaresEstimado: Boolean = false
 )
+
+/** Tamaño de impresión del recibo en la hoja A4 apaisada del PDF. */
+enum class TamanoRecibo(val etiqueta: String) {
+    CHICO("Chico (1/3 de página)"),
+    MEDIANO("Mediano (1/2 página)"),
+    GRANDE("Grande (página completa, apaisado)");
+
+    companion object {
+        fun desde(valor: String?): TamanoRecibo = values().firstOrNull { it.name == valor } ?: CHICO
+    }
+}
+
+fun Gasto.tamano(): TamanoRecibo = TamanoRecibo.desde(tamanoRecibo)

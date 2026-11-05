@@ -43,7 +43,9 @@ interface GastoDao {
     @Delete
     suspend fun deleteGasto(gasto: Gasto)
 
-    @Query("SELECT * FROM gastos WHERE viajeId = :viajeId ORDER BY timestamp")
+    // Orden de carga = orden de creación. Se usa el id (autoincremental, inmutable) y no el timestamp,
+    // para que editar un gasto nunca cambie su posición en la lista ni en las exportaciones.
+    @Query("SELECT * FROM gastos WHERE viajeId = :viajeId ORDER BY id")
     suspend fun getGastosByViajeId(viajeId: Long): List<Gasto>
 
     /**
@@ -52,5 +54,15 @@ interface GastoDao {
      */
     @Query("SELECT COUNT(*) FROM gastos WHERE viajeId = :viajeId AND formaDePago = :formaDePago")
     suspend fun countGastosByFormaDePago(viajeId: Long, formaDePago: String): Int
+
+    /** TAGs ya usados en el viaje para una forma de pago (para generar el siguiente sin duplicar). */
+    @Query("SELECT tagGasto FROM gastos WHERE viajeId = :viajeId AND formaDePago = :formaDePago")
+    suspend fun getTagsByFormaDePago(viajeId: Long, formaDePago: String): List<String>
+
+    @Query("SELECT * FROM gastos WHERE id = :gastoId")
+    suspend fun getGastoById(gastoId: Long): Gasto?
+
+    @Query("UPDATE gastos SET importeDolares = :usd, dolaresEstimado = 1 WHERE id = :gastoId")
+    suspend fun setDolaresEstimados(gastoId: Long, usd: Double)
 
 }

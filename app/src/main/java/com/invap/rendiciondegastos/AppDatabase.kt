@@ -4,40 +4,54 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+// --- IMPORT AÑADIDO ---
 
-/**
- * Clase principal de la base de datos Room.
- * Define las entidades (tablas) y provee acceso a los DAOs.
- */
-@Database(entities = [Viaje::class, Gasto::class], version = 1, exportSchema = false)
+
+// Versión 2 (esto es correcto)
+@Database(entities = [Viaje::class, Gasto::class], version = 4, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
 
-    // Define los DAOs que la base de datos expondrá
     abstract fun viajeDao(): ViajeDao
     abstract fun gastoDao(): GastoDao
 
     companion object {
-        // La anotación @Volatile asegura que el valor de INSTANCE
-        // esté siempre actualizado y sea el mismo para todos los hilos de ejecución.
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        /**
-         * Obtiene la instancia única de la base de datos (patrón Singleton).
-         * Si la instancia no existe, la crea de forma segura (synchronized).
-         */
+        /** Migraciones de esquema. Agregar una nueva por cada cambio de versión. */
+        /** v2 -> v3: tamaño de impresión del recibo. Los gastos existentes quedan en CHICO (como se imprimían). */
+        val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE gastos ADD COLUMN tamanoRecibo TEXT NOT NULL DEFAULT 'CHICO'")
+            }
+        }
+
+        /** v3 -> v4: importe en dólares por gasto (opcional) y fecha de fin del viaje. */
+        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE gastos ADD COLUMN importeDolares REAL")
+                db.execSQL("ALTER TABLE gastos ADD COLUMN dolaresEstimado INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE viajes ADD COLUMN fechaFin TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        val MIGRATIONS: Array<androidx.room.migration.Migration> = arrayOf(MIGRATION_2_3, MIGRATION_3_4)
+
         fun getInstance(context: Context): AppDatabase {
-            // El bloque synchronized asegura que solo un hilo a la vez
-            // pueda ejecutar este código, evitando crear dos instancias
-            // de la base de datos por error.
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "rendicion_gastos_db" // Nombre del archivo de la base de datos
-                ).build()
+                    "rendicion_gastos_db"
+                )
+                    // Los datos solo existen en el teléfono: NUNCA borrar la base ante un cambio
+                    // de esquema. Para cada nueva versión, agregar un Migration a MIGRATIONS.
+                    // Solo la versión 1 (anterior a la 2.0) se permite recrear.
+                    .fallbackToDestructiveMigrationFrom(1)
+                    .addMigrations(*MIGRATIONS)
+                    .build()
                 INSTANCE = instance
-                // Retorna la instancia recién creada
                 instance
             }
         }
