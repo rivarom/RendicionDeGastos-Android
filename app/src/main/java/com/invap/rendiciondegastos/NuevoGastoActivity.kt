@@ -101,6 +101,26 @@ class NuevoGastoActivity : AppCompatActivity() {
         // Si el usuario cancela el escáner no se cambia nada: se conserva la foto que hubiera
     }
 
+    // Cualquier recibo (PDF o imagen) como comprobante, sin leer sus datos
+    private val adjuntarArchivoLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            lifecycleScope.launch {
+                try {
+                    val copia = withContext(Dispatchers.IO) {
+                        val destino = File(cacheDir, "recibo_importado")
+                        val entrada = contentResolver.openInputStream(uri) ?: throw java.io.IOException("No se pudo leer el archivo")
+                        entrada.use { i -> destino.outputStream().use { o -> i.copyTo(o) } }
+                        destino
+                    }
+                    importarReciboPdf(copia, analizar = false)
+                } catch (e: Exception) {
+                    Log.e("NuevoGastoActivity", "Error al leer el archivo", e)
+                    Toast.makeText(this@NuevoGastoActivity, "No se pudo abrir el archivo: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -141,6 +161,12 @@ class NuevoGastoActivity : AppCompatActivity() {
             if (!ptDefecto.isNullOrEmpty() && !wpDefecto.isNullOrEmpty()) {
                 binding.autoCompleteImputacion.setText("PT: $ptDefecto / WP: $wpDefecto", false)
             }
+            aplicarTipoYFormaPorDefecto()
+            // Si llegó un recibo PDF desde "Compartir", se lee ahora (solo la primera vez, no al rotar la pantalla)
+            val reciboPdf = intent.getStringExtra(EXTRA_RECIBO_PDF)
+            if (reciboPdf != null && savedInstanceState == null) {
+                importarReciboPdf(File(reciboPdf), intent.getBooleanExtra(EXTRA_RECIBO_ANALIZAR, true))
+            }
         } else { // Modo Edición
             prepararModoEdicion()
         }
@@ -154,11 +180,16 @@ class NuevoGastoActivity : AppCompatActivity() {
             abrirEscaner()
         }
 
+        binding.buttonAdjuntarArchivo.setOnClickListener {
+            adjuntarArchivoLauncher.launch(arrayOf("application/pdf", "image/*"))
+        }
+
         // --- LÓGICA DE CHECKBOX AÑADIDA ---
         binding.checkboxSinComprobante.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 // Si se marca "Sin comprobante", deshabilitar la cámara y limpiar fotos
                 binding.buttonTomarFoto.isEnabled = false
+                binding.buttonAdjuntarArchivo.isEnabled = false
                 binding.imageViewFotoRecibo.visibility = View.GONE
                 fotoUri = null
                 pathFotoLocal = null
@@ -171,6 +202,7 @@ class NuevoGastoActivity : AppCompatActivity() {
             } else {
                 // Si se desmarca, habilitar la cámara
                 binding.buttonTomarFoto.isEnabled = true
+                binding.buttonAdjuntarArchivo.isEnabled = true
                 habilitarSelectorTamano(true)
             }
         }
@@ -506,6 +538,7 @@ class NuevoGastoActivity : AppCompatActivity() {
         binding.checkboxSinComprobante.isChecked = sinComprobante
         if (sinComprobante) {
             binding.buttonTomarFoto.isEnabled = false
+            binding.buttonAdjuntarArchivo.isEnabled = false
             habilitarSelectorTamano(false)
         } else {
             seleccionarTamano(TamanoRecibo.desde(intent.getStringExtra(EXTRA_GASTO_TAMANO_RECIBO)))
@@ -528,6 +561,106 @@ class NuevoGastoActivity : AppCompatActivity() {
                 Toast.makeText(this, "No se pudo cargar la foto", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    /** Tipo de gasto y forma de pago por defecto (Configuración) para los gastos nuevos. */
+    private fun aplicarTipoYFormaPorDefecto() {
+        val prefs = getSharedPreferences(Monedas.PREFS, Context.MODE_PRIVATE)
+        val tipos = prefs.getStringSet("TIPOS_GASTO", setOf("Transporte", "Comida")) ?: emptySet()
+        val tipo = prefs.getString(ConfiguracionActivity.CLAVE_TIPO_DEFECTO, "") ?: ""
+        if (tipo.isNotEmpty() && tipo in tipos) binding.autoCompleteTipoGasto.setText(tipo, false)
+        val forma = prefs.getString(ConfiguracionActivity.CLAVE_FORMA_PAGO_DEFECTO, "") ?: ""
+        if (forma.isNotEmpty() && formasPagoList.any { it.nombre == forma }) binding.autoCompleteFormaPago.setText(forma, false)
+    }
+
+    /**
+     * Carga un recibo en PDF: la primera página queda como foto del comprobante y los datos que se
+     * reconocen (importe, moneda, fecha, descripción, tipo de gasto y forma de pago) se precargan.
+     * Todo se puede corregir en el formulario antes de guardar.
+     */
+    private fun importarReciboPdf(pdf: File, analizar: Boolean = true) {
+        lifecycleScope.launch {
+            try {
+                val (datos, foto) = withContext(Dispatchers.IO) {
+                    val destino = crearArchivoDeImagen()
+                    val esPdf = pdf.inputStream().use { entrada ->
+                        val cabecera = ByteArray(5)
+                        entrada.read(cabecera)
+                        String(cabecera, Charsets.ISO_8859_1) == "%PDF-"
+                    }
+                    if (esPdf) {
+                        ReciboPdf.guardarPrimeraPaginaComoJpeg(pdf, destino)
+                    } else {
+                        // Imagen: se copia y se reduce igual que las fotos tomadas con la cámara
+                        pdf.copyTo(destino, overwrite = true)
+                        FotoUtil.reducir(destino)
+                    }
+                    Pair(if (analizar && esPdf) ReciboPdf.leerDatos(applicationContext, pdf) else ReciboPdf.Datos(), destino)
+                }
+                // Con comprobante: se desmarca "sin comprobante" si estaba marcado
+                if (binding.checkboxSinComprobante.isChecked) binding.checkboxSinComprobante.isChecked = false
+                pathFotoLocal = foto.absolutePath
+                urlFotoExistente = null
+                rotacionPendiente = 0
+                binding.imageViewFotoRecibo.rotation = 0f
+                Glide.with(this@NuevoGastoActivity).load(foto)
+                    .signature(ObjectKey(foto.lastModified()))
+                    .into(binding.imageViewFotoRecibo)
+                binding.imageViewFotoRecibo.visibility = View.VISIBLE
+                binding.buttonGirarFoto.visibility = View.VISIBLE
+
+                if (analizar) aplicarDatosRecibo(datos)
+                val mensaje = if (!analizar) {
+                    "Comprobante adjuntado. Completá los datos del gasto"
+                } else if (datos.cantidadReconocida == 0) {
+                    "Recibo adjuntado. No se reconocieron datos: completalos a mano"
+                } else {
+                    "Recibo importado. Revisá los datos antes de guardar"
+                }
+                Toast.makeText(this@NuevoGastoActivity, mensaje, Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Log.e("NuevoGastoActivity", "Error al importar el recibo PDF", e)
+                Toast.makeText(this@NuevoGastoActivity, "No se pudo importar el recibo: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun aplicarDatosRecibo(d: ReciboPdf.Datos) {
+        val prefs = getSharedPreferences(Monedas.PREFS, Context.MODE_PRIVATE)
+
+        d.moneda?.let { codigo ->
+            val monedas = prefs.getStringSet("MONEDAS", setOf("Pesos", "Dólar")) ?: emptySet()
+            val elegida = monedas.firstOrNull { m ->
+                when (codigo) {
+                    "ARS" -> Monedas.esPesos(m)
+                    "USD" -> Monedas.esDolar(m)
+                    else -> Monedas.normalizar(m) == Monedas.normalizar(codigo)
+                }
+            }
+            if (elegida != null) binding.autoCompleteMoneda.setText(elegida, false)
+        }
+        d.monto?.let {
+            binding.editTextMontoGasto.setText(java.math.BigDecimal.valueOf(it).stripTrailingZeros().toPlainString())
+        }
+        d.fecha?.let { binding.editTextFechaGasto.setText(it) }
+        d.descripcion?.let { binding.editTextDescripcionGasto.setText(it) }
+
+        if (d.proveedor == "Uber") {
+            val tipos = prefs.getStringSet("TIPOS_GASTO", setOf("Transporte", "Comida")) ?: emptySet()
+            tipos.firstOrNull { Monedas.normalizar(it) == "transporte" }?.let { binding.autoCompleteTipoGasto.setText(it, false) }
+        }
+
+        // Tarjeta -> forma de pago con prefijo TC; efectivo -> la de efectivo
+        val forma = when (d.medioPago) {
+            ReciboPdf.MedioPago.TARJETA ->
+                formasPagoList.firstOrNull { it.prefijo.equals("TC", ignoreCase = true) }
+                    ?: formasPagoList.firstOrNull { Monedas.normalizar(it.nombre).contains("credito") }
+            ReciboPdf.MedioPago.EFECTIVO ->
+                formasPagoList.firstOrNull { it.prefijo.equals("EFE", ignoreCase = true) }
+                    ?: formasPagoList.firstOrNull { Monedas.normalizar(it.nombre).contains("efectivo") }
+            null -> null
+        }
+        if (forma != null) binding.autoCompleteFormaPago.setText(forma.nombre, false)
     }
 
     private fun cargarOpcionesDesplegables() {
@@ -652,6 +785,8 @@ class NuevoGastoActivity : AppCompatActivity() {
         const val EXTRA_VIAJE_MONEDA_DEFECTO = "EXTRA_VIAJE_MONEDA_DEFECTO"
         const val EXTRA_VIAJE_IMPUTACION_PT = "EXTRA_VIAJE_IMPUTACION_PT"
         const val EXTRA_VIAJE_IMPUTACION_WP = "EXTRA_VIAJE_IMPUTACION_WP"
+        const val EXTRA_RECIBO_PDF = "EXTRA_RECIBO_PDF"
+        const val EXTRA_RECIBO_ANALIZAR = "EXTRA_RECIBO_ANALIZAR"
         const val EXTRA_GASTO_ID = "EXTRA_GASTO_ID"
         const val EXTRA_GASTO_DESCRIPCION = "EXTRA_GASTO_DESCRIPCION"
         const val EXTRA_GASTO_MONTO = "EXTRA_GASTO_MONTO"

@@ -10,8 +10,8 @@ import java.util.Locale
  * Los anchos se calculan a partir del contenido (lo justo para que se vea todo).
  *
  * Importe en dólares de gastos en otra moneda: si es estimado, la celda se ve celeste; al escribir el valor real
- * (p. ej. del resumen de la tarjeta) deja de verse celeste. Para eso la estimación original se guarda en una
- * columna auxiliar oculta (a la derecha de WP) y un formato condicional compara la celda con ese valor.
+ * (p. ej. del resumen de la tarjeta) deja de verse celeste, aunque sea el mismo valor. Para eso el valor estimado se
+ * escribe como fórmula (=ROUND(x;2)) y un formato condicional pinta de celeste las celdas que contienen fórmula.
  */
 object ExcelRendicion {
 
@@ -56,7 +56,6 @@ object ExcelRendicion {
         val pesos = l.estilo(e().vCentro().borde(1).formatoNumero("\$ #,##0.00"))
         val dolares = l.estilo(e().vCentro().borde(1).formatoNumero("#,##0.00"))
         val tasa = l.estilo(e().vCentro().borde(1).formatoNumero("#,##0.00"))
-        val auxiliar = l.estilo(e().formatoNumero("#,##0.00"))
         val totalEtiqueta = l.estilo(e().negrita().vCentro().borde(2))
         val totalPesos = l.estilo(e().negrita().vCentro().borde(2).formatoNumero("\$ #,##0.00"))
         val totalDolares = l.estilo(e().negrita().vCentro().borde(2).formatoNumero("#,##0.00"))
@@ -149,7 +148,6 @@ object ExcelRendicion {
         val colPT = colMoneda + 5
         val colWP = colMoneda + 6
         val ultimaCol = colWP
-        val colAuxiliar = ultimaCol + 1   // estimación original de los dólares (oculta)
 
         val encabezados = mutableListOf("Comprobante", "Detalle")
         encabezados.addAll(tipos)
@@ -197,7 +195,6 @@ object ExcelRendicion {
         }
         sheet.anchoColumna(0, 2.0)
         for (c in c0..ultimaCol) sheet.anchoColumna(c, anchos[c].toDouble())
-        sheet.ocultarColumna(colAuxiliar, 12.0)
 
         // ---- encabezado de la hoja
         sheet.texto(1, c0, "Plazos para la rendición:", s.negrita14)
@@ -257,18 +254,22 @@ object ExcelRendicion {
                 esDolar -> sheet.numero(fila, colDolares, g.monto, s.dolares)
                 esPesos -> sheet.vacio(fila, colDolares, s.texto)
                 else -> {
-                    val usd = g.importeDolares
+                    // Se redondea a centavos: es lo que se ve en la celda y lo que la persona va a escribir
+                    val usd = g.importeDolares?.let { Math.round(it * 100.0) / 100.0 }
                     if (usd != null) {
-                        sheet.numero(fila, colDolares, usd, s.dolares)
-                        // Estimación original: mientras la celda siga igual, se ve celeste
-                        if (g.dolaresEstimado) sheet.numero(fila, colAuxiliar, usd, s.auxiliar)
+                        if (g.dolaresEstimado) {
+                            // Estimado: la celda contiene una FÓRMULA (=ROUND(valor;2)). Al escribir encima cualquier
+                            // valor, aunque sea igual, pasa a ser un número fijo y deja de verse celeste.
+                            sheet.formula(fila, colDolares, "ROUND(" + String.format(java.util.Locale.US, "%.2f", usd) + ",2)", s.dolares)
+                        } else {
+                            sheet.numero(fila, colDolares, usd, s.dolares)
+                        }
                     } else {
                         sheet.vacio(fila, colDolares, s.dolares)
                     }
                     val d = direccion(colDolares, fila)
-                    val a = direccion(colAuxiliar, fila)
-                    // Celeste si la celda está vacía (completar a mano) o si todavía vale lo estimado
-                    sheet.formatoCondicional(d, "OR(NOT(ISNUMBER($d)),AND(ISNUMBER($a),$d=$a))", s.dxfEstimado)
+                    // Celeste si la celda está vacía (completar a mano) o si todavía contiene la fórmula de la estimación
+                    sheet.formatoCondicional(d, "OR(NOT(ISNUMBER($d)),_xlfn.ISFORMULA($d))", s.dxfEstimado)
                 }
             }
 

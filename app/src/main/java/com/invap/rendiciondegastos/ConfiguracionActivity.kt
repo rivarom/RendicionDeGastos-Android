@@ -98,6 +98,15 @@ class ConfiguracionActivity : AppCompatActivity() {
         )
     }
 
+    private fun actualizarOpcionesDefecto() {
+        binding.autoCompleteTipoDefecto.setAdapter(
+            android.widget.ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, tiposGastoList.sorted())
+        )
+        binding.autoCompleteFormaPagoDefecto.setAdapter(
+            android.widget.ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, formasPagoList.map { it.nombre }.sorted())
+        )
+    }
+
     private fun setupButtons() {
         // ... (botones de Moneda, Tipo de Gasto y Forma de Pago sin cambios) ...
         binding.buttonAnadirMoneda.setOnClickListener {
@@ -145,6 +154,16 @@ class ConfiguracionActivity : AppCompatActivity() {
                     binding.editTextNuevaImputacionWP.text?.clear()
                 }
             }
+        }
+
+        // Valores por defecto: las opciones salen de las listas configuradas
+        binding.autoCompleteTipoDefecto.setOnClickListener { actualizarOpcionesDefecto() }
+        binding.autoCompleteTipoDefecto.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) actualizarOpcionesDefecto() }
+        binding.autoCompleteFormaPagoDefecto.setOnClickListener { actualizarOpcionesDefecto() }
+        binding.autoCompleteFormaPagoDefecto.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) actualizarOpcionesDefecto() }
+        binding.buttonLimpiarDefectos.setOnClickListener {
+            binding.autoCompleteTipoDefecto.setText("", false)
+            binding.autoCompleteFormaPagoDefecto.setText("", false)
         }
 
         binding.autoCompleteTasaMoneda.setOnClickListener { actualizarMonedasTasa() }
@@ -230,6 +249,11 @@ class ConfiguracionActivity : AppCompatActivity() {
         tasasList.sortBy { Monedas.normalizar(it.moneda) }
         tasasAdapter.notifyDataSetChanged()
         actualizarMonedasTasa()
+
+        // Valores por defecto de los gastos nuevos
+        binding.autoCompleteTipoDefecto.setText(userPrefs.getString(CLAVE_TIPO_DEFECTO, "") ?: "", false)
+        binding.autoCompleteFormaPagoDefecto.setText(userPrefs.getString(CLAVE_FORMA_PAGO_DEFECTO, "") ?: "", false)
+        actualizarOpcionesDefecto()
     }
 
     private fun guardarConfiguracion() {
@@ -246,6 +270,11 @@ class ConfiguracionActivity : AppCompatActivity() {
         editor.putStringSet("FORMAS_PAGO", formasPagoAGuardar)
         editor.putStringSet("IMPUTACIONES", imputacionesAGuardar)
         editor.putStringSet(Monedas.CLAVE_TASAS, tasasList.map { "${it.moneda}::${it.tasa}" }.toSet())
+        // Solo se guardan valores que existan en las listas (si se borró el tipo o la forma de pago, queda vacío)
+        val tipoDefecto = binding.autoCompleteTipoDefecto.text.toString().trim()
+        val formaDefecto = binding.autoCompleteFormaPagoDefecto.text.toString().trim()
+        editor.putString(CLAVE_TIPO_DEFECTO, if (tipoDefecto in tiposGastoList) tipoDefecto else "")
+        editor.putString(CLAVE_FORMA_PAGO_DEFECTO, if (formasPagoList.any { it.nombre == formaDefecto }) formaDefecto else "")
         editor.putBoolean("CONFIGURACION_COMPLETA", true) // Marcamos que la configuración se guardó
 
         val exito = editor.commit()
@@ -255,5 +284,10 @@ class ConfiguracionActivity : AppCompatActivity() {
         } else {
             Toast.makeText(this, "Error al guardar la configuración", Toast.LENGTH_LONG).show()
         }
+    }
+
+    companion object {
+        const val CLAVE_TIPO_DEFECTO = "TIPO_GASTO_DEFECTO"
+        const val CLAVE_FORMA_PAGO_DEFECTO = "FORMA_PAGO_DEFECTO"
     }
 }

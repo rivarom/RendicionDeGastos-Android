@@ -131,6 +131,15 @@
             android:text="Tomar Foto del Recibo"
             app:icon="@android:drawable/ic_menu_camera" />
 
+        <Button
+            android:id="@+id/buttonAdjuntarArchivo"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:text="Adjuntar otro recibo (PDF o imagen)" />
+
         <CheckBox
             android:id="@+id/checkboxSinComprobante"
             android:layout_width="wrap_content"

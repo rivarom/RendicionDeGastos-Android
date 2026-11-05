@@ -37,6 +37,19 @@
         <activity
             android:name=".ConfiguracionActivity"
             android:exported="false" />
+        <!-- Destino de "Compartir" para recibos en PDF -->
+        <activity
+            android:name=".ImportarReciboActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="Rendición de Viajes"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity>
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.invap.rendiciondegastos.fileprovider"

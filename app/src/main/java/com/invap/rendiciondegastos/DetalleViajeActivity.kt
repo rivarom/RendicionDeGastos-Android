@@ -29,16 +29,6 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import com.bumptech.glide.signature.ObjectKey
 import com.invap.rendiciondegastos.databinding.ActivityDetalleViajeBinding
-import jxl.CellView
-import jxl.SheetSettings
-import jxl.WorkbookSettings
-import jxl.Workbook
-import jxl.format.Alignment
-import jxl.format.Border
-import jxl.format.BorderLineStyle
-import jxl.format.Colour
-import jxl.format.VerticalAlignment
-import jxl.write.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -107,6 +97,36 @@ class DetalleViajeActivity : AppCompatActivity() {
         ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
         if (uri != null) exportarViajeAUri(uri)
+    }
+
+    // Recibo en PDF (p. ej. de Uber): abre el formulario de nuevo gasto con los datos y el comprobante ya cargados
+    private val importarReciboLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) importarReciboPdf(uri, analizar = true)
+    }
+
+    private fun importarReciboPdf(uri: android.net.Uri, analizar: Boolean) {
+        lifecycleScope.launch {
+            try {
+                val copia = withContext(Dispatchers.IO) {
+                    val destino = File(cacheDir, "recibo_importado")
+                    val entrada = contentResolver.openInputStream(uri) ?: throw java.io.IOException("No se pudo leer el archivo")
+                    entrada.use { i -> destino.outputStream().use { o -> i.copyTo(o) } }
+                    destino
+                }
+                val intent = Intent(this@DetalleViajeActivity, NuevoGastoActivity::class.java)
+                intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_ID, viajeId)
+                intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_MONEDA_DEFECTO, monedaPorDefecto)
+                intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_IMPUTACION_PT, imputacionPtPorDefecto)
+                intent.putExtra(NuevoGastoActivity.EXTRA_VIAJE_IMPUTACION_WP, imputacionWpPorDefecto)
+                intent.putExtra(NuevoGastoActivity.EXTRA_RECIBO_PDF, copia.absolutePath)
+                intent.putExtra(NuevoGastoActivity.EXTRA_RECIBO_ANALIZAR, analizar)
+                startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(this@DetalleViajeActivity, "No se pudo abrir el PDF: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -213,6 +233,10 @@ class DetalleViajeActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_importar_recibo_uber -> {
+                importarReciboLauncher.launch(arrayOf("application/pdf"))
+                true
+            }
             R.id.action_export_excel -> {
                 exportarAExcel(null)
                 true

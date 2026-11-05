@@ -13,17 +13,46 @@ android {
         applicationId "com.invap.rendiciondegastos"
         minSdk 24
         targetSdk 36
-        versionCode 2
-        versionName "2.0"
+        versionCode 3
+        versionName "2.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // Firma de release. Si existe app/keystore.properties (storeFile, storePassword, keyAlias, keyPassword),
+    // se firma con esa clave propia. Si no existe, se firma con la clave de debug de esta computadora:
+    // es la misma con la que se firmó la V2.0, así la V2.1 se instala SOBRE la V2.0 sin perder datos.
+    // (Cambiar de clave obliga a desinstalar la app, y eso borra los viajes del teléfono.)
+    def keystoreProps = new Properties()
+    def keystoreFile = file("keystore.properties")
+    if (keystoreFile.exists()) {
+        keystoreFile.withInputStream { keystoreProps.load(it) }
+    }
+
+    signingConfigs {
+        release {
+            if (keystoreFile.exists()) {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
     }
 
     buildTypes {
 
         release {
+            // Sin minify: el APK es chico y evita fallas por reflexión (Room, Glide, ML Kit) difíciles de probar
             minifyEnabled false
+            debuggable false
+            signingConfig keystoreFile.exists() ? signingConfigs.release : signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+    }
+
+    // Los esquemas de Room exportados se usan en las pruebas de migración
+    sourceSets {
+        androidTest.assets.srcDirs += files("$projectDir/schemas".toString())
     }
 
     compileOptions {
@@ -48,9 +77,6 @@ kapt {
 }
 
 dependencies {
-    // LIBRERÍA EXCEL
-    implementation 'net.sourceforge.jexcelapi:jxl:2.6.12'
-
     // Room (Base de datos local) - AÑADIDO
     implementation libs.androidx.room.runtime
     implementation libs.androidx.room.ktx
@@ -59,10 +85,11 @@ dependencies {
     // LIBRERÍAS EXISTENTES
     implementation 'androidx.core:core-splashscreen:1.0.1'
     implementation 'com.github.bumptech.glide:glide:4.16.0'
+    // Lectura del texto de recibos en PDF
+    implementation 'com.tom-roush:pdfbox-android:2.0.27.0'
 
     // Escáner de documentos de Google (recorte, giro y corrección de perspectiva al tomar el recibo)
     implementation 'com.google.android.gms:play-services-mlkit-document-scanner:16.0.0'
-    annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0'
     implementation libs.androidx.core.ktx
     implementation libs.androidx.appcompat
     implementation libs.material
@@ -71,4 +98,5 @@ dependencies {
     testImplementation libs.junit
     androidTestImplementation libs.androidx.junit
     androidTestImplementation libs.androidx.espresso.core
+    androidTestImplementation 'androidx.room:room-testing:2.6.1'
 }
